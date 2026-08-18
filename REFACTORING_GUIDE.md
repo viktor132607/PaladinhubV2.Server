@@ -167,6 +167,58 @@ Before creating a new service, inspect existing domain services. The Account ref
 
 ---
 
+## Source-of-truth example 3: Products
+
+The original `ProductsController` mixed public catalog routing, category lookup, product details, Admin create/edit/delete flows, form-model preparation, category normalization and user review operations.
+
+### Controllers
+
+- `ProductsController`
+  - merchandise redirect
+  - categories
+  - product details
+
+- `ProductAdminController`
+  - create model
+  - create API + legacy route
+  - edit model
+  - update API + legacy route
+  - delete API + legacy compatibility route
+
+- `ProductReviewsController`
+  - add review API + legacy route
+  - delete review API + legacy route
+
+All controllers preserve the shared route bases:
+
+- `/Products/...`
+- `/api/products/...`
+
+### Services
+
+- `IProductAdminService` / `ProductAdminService`
+  - create/edit form-model preparation
+  - category select-list composition
+  - new-category normalization
+  - create/update/delete orchestration through the existing product domain service
+
+- `IProductReviewService` / `ProductReviewService`
+  - review creation/deletion orchestration
+  - keeps review business operations out of the HTTP controller
+
+- `IProductService` / `ProductService`
+  - remains the existing core product data/domain service
+  - catalog queries and product details
+  - persistent product CRUD implementation
+  - review persistence used by the focused review service
+  - cart-facing product queries used elsewhere in the application
+
+### Product-specific rule learned
+
+If a large controller already delegates most persistence/business rules to an existing domain service, do not duplicate that data-access logic into new services just to make new classes. Extract only the remaining orchestration/model-composition responsibilities and split the HTTP endpoints by domain boundary. A later dedicated `ProductService` refactor can split its own large responsibilities without coupling that work to the controller migration.
+
+---
+
 ## Pattern for the next large controller
 
 When asked to "refactor this controller like Checkout" or "do the same as Account":

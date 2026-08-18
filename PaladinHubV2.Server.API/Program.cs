@@ -13,6 +13,7 @@ using PaladinHubV2.Server.Data;
 using PaladinHubV2.Server.Data.Seed;
 using PaladinHubV2.Server.Data.Seed.Contracts;
 using PaladinHubV2.Server.Domain.Services.Checkout;
+using PaladinHubV2.Server.Domain.Services.Products;
 
 LoadEnvironmentFile();
 
@@ -49,6 +50,14 @@ builder.Services.AddScoped<
 builder.Services.AddScoped<
 	ICheckoutService,
 	CheckoutService>();
+
+builder.Services.AddScoped<
+	IProductAdminService,
+	ProductAdminService>();
+
+builder.Services.AddScoped<
+	IProductReviewService,
+	ProductReviewService>();
 
 ConfigureHttpPort(builder);
 
