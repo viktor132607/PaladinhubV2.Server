@@ -12,6 +12,7 @@ using PaladinHubV2.Server.API.ServiceExtensions;
 using PaladinHubV2.Server.Data;
 using PaladinHubV2.Server.Data.Seed;
 using PaladinHubV2.Server.Data.Seed.Contracts;
+using PaladinHubV2.Server.Domain.Services.Carts;
 using PaladinHubV2.Server.Domain.Services.Checkout;
 using PaladinHubV2.Server.Domain.Services.Products;
 
@@ -34,6 +35,10 @@ builder.Services.Configure<ForwardedHeadersOptions>(
 builder.Services.AddPaladinHubApp(
 	builder.Configuration,
 	builder.Environment);
+
+builder.Services.AddScoped<
+	ICartApplicationService,
+	CartApplicationService>();
 
 builder.Services.AddScoped<
 	ICheckoutStateService,

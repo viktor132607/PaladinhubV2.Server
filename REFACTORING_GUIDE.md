@@ -219,6 +219,62 @@ If a large controller already delegates most persistence/business rules to an ex
 
 ---
 
+## Source-of-truth example 4: Carts
+
+The original `CartsController` mixed user cart reads, anonymous/session cart mutations, Redis/session-to-persistent synchronization, cart response calculations and Admin archive access.
+
+### Controllers
+
+- `CartsController`
+  - MyCart
+  - Mini
+  - CountJson
+
+- `CartItemsController`
+  - add item API
+  - legacy AddProduct route
+  - Increase
+  - Decrease
+  - RemoveProduct
+  - Cancel
+
+- `AdminCartsController`
+  - archive list
+  - archived-cart details
+
+All controllers preserve the shared route bases and compatibility route:
+
+- `/Cart/...`
+- `/api/cart/...`
+- `/Carts/AddProduct/{id}`
+
+### Services
+
+- `ICartApplicationService` / `CartApplicationService`
+  - validates product IDs and quantity bounds
+  - orchestrates add/increase/decrease/remove operations through `ICartSessionService`
+  - synchronizes session/Redis state before authenticated cart reads
+  - composes mutation delta data such as quantity, line total and cart total
+  - provides anonymous cart count responses without leaking HTTP/session concerns into the domain layer
+  - clears the authenticated cart
+
+- `ICartSessionService` / `CartSessionService`
+  - remains the lower-level session/store synchronization service
+  - cart mutations against the session/store layer
+  - persistent synchronization and cleanup
+
+- `ICartService` / `CartService`
+  - remains the persistent cart service
+  - Admin archive queries and archived-cart details
+
+### Cart-specific rule learned
+
+Keep HTTP ownership resolution at the controller boundary: the controller decides whether the cart owner is the authenticated user ID or an anonymous session key. Pass that owner key into the application service. This prevents the domain service from depending directly on `HttpContext` while still allowing authenticated and anonymous carts to share the same orchestration logic.
+
+Admin/reporting endpoints that operate on archived carts belong in a separate Admin controller even when they share the same route base with normal cart endpoints.
+
+---
+
 ## Pattern for the next large controller
 
 When asked to "refactor this controller like Checkout" or "do the same as Account":
