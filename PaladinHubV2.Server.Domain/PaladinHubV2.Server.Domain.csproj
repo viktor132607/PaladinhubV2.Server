@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\PaladinHubV2.Server.Common\PaladinHubV2.Server.Common.csproj" />
+    <ProjectReference Include="..\PaladinHubV2.Server.Core\PaladinHubV2.Server.Core.csproj" />
+    <ProjectReference Include="..\PaladinHubV2.Server.Data\PaladinHubV2.Server.Data.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>PaladinHubV2.Server.Domain</AssemblyName>
+    <RootNamespace>PaladinHubV2.Server.Domain</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Stripe.net" />
+  </ItemGroup>
+
+</Project>

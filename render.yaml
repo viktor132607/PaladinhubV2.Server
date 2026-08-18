@@ -1,0 +1,154 @@
+previews:
+  generation: off
+
+services:
+  - type: web
+    runtime: docker
+    name: paladinhubv2-api
+    repo: https://github.com/vitkor132607/PaladinHubV2.Server.git
+    branch: main
+    plan: free
+    region: frankfurt
+
+    dockerContext: .
+    dockerfilePath: ./PaladinHubV2.Server.API/Dockerfile
+    dockerCommand: dotnet PaladinHubV2.Server.API.dll
+
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+
+    envVars:
+      - key: PORT
+        value: "10000"
+
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+
+      - key: ConnectionStrings__DefaultConnection
+        fromDatabase:
+          name: paladinhubv2-db
+          property: connectionString
+
+      - key: APPLY_MIGRATIONS_ON_STARTUP
+        value: "true"
+
+      - key: ClientApp__BaseUrl
+        value: https://paladinhubv2-client.onrender.com
+
+      - key: Cors__AllowedOrigins__0
+        value: https://paladinhubv2-client.onrender.com
+
+      - key: CORS_ALLOWED_ORIGINS
+        value: https://paladinhubv2-client.onrender.com
+
+      - key: ADMIN_NAME
+        value: PaladinHubV2 Admin
+
+      - key: ADMIN_EMAIL
+        sync: false
+
+      - key: ADMIN_PASSWORD
+        sync: false
+
+      - key: STRIPE_MODE
+        value: Test
+
+      - key: STRIPE__SECRETKEY_TEST
+        sync: false
+
+      - key: STRIPE__PUBLISHABLEKEY_TEST
+        sync: false
+
+      - key: STRIPE__SECRETKEY_LIVE
+        sync: false
+
+      - key: STRIPE__PUBLISHABLEKEY_LIVE
+        sync: false
+
+      - key: Email__DeliveryMode
+        value: Resend
+
+      - key: Email__SenderEmail
+        sync: false
+
+      - key: Email__SenderName
+        value: PaladinHubV2
+
+      - key: Email__ResendApiKey
+        sync: false
+
+      - key: Email__ContactRecipientEmail
+        value: iliev132607@gmail.com
+
+      - key: Email__PasswordResetTokenExpiryMinutes
+        value: "30"
+
+      - key: Payments__OnlineProviderName
+        value: DemoSportPay
+
+      - key: Payments__OnlinePaymentLabel
+        value: Online card payment
+
+      - key: Payments__SupportedMethods__0
+        value: online-card
+
+      - key: Payments__SupportedMethods__1
+        value: bank-transfer
+
+      - key: Payments__BankTransfer__Beneficiary
+        value: PaladinHubV2 Ltd.
+
+      - key: Payments__BankTransfer__Iban
+        value: BG00DEMO12345678901234
+
+      - key: Payments__BankTransfer__Bic
+        value: DEMOBGSF
+
+      - key: Payments__BankTransfer__BankName
+        value: Demo Bank
+
+      - key: Payments__BankTransfer__ReferencePrefix
+        value: SPORT
+
+      - key: Inventory__LowStockThreshold
+        value: "10"
+
+      - key: DevelopmentSettings__ResetDatabaseOnStart
+        value: "false"
+
+      - key: DevelopmentSettings__ExposeEmailPreviewLinks
+        value: "false"
+
+  - type: web
+    runtime: static
+    name: paladinhubv2-client
+    repo: https://github.com/vitkor132607/PaladinHubV2.Client.git
+    branch: main
+
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./out
+    autoDeployTrigger: commit
+
+    envVars:
+      - key: NODE_VERSION
+        value: 20.19.0
+
+      - key: SKIP_INSTALL_DEPS
+        value: "true"
+
+      - key: NEXT_PUBLIC_API_URL
+        value: https://paladinhubv2-api.onrender.com
+
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+databases:
+  - name: paladinhubv2-db
+    databaseName: paladinhubv2db
+    user: paladinhubv2
+    plan: free
+    region: frankfurt
+    postgresMajorVersion: "16"
+    ipAllowList: []
