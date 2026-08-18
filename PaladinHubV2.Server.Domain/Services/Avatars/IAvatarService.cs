@@ -4,7 +4,6 @@ using Microsoft.AspNetCore.Identity;
 using PaladinHubV2.Server.Data.Entities;
 using PaladinHubV2.Server.Domain.Services.Common;
 
-
 namespace PaladinHubV2.Server.Domain.Services.Avatars
 {
 	public interface IAvatarService
@@ -15,78 +14,221 @@ namespace PaladinHubV2.Server.Domain.Services.Avatars
 		Task<OperationResult> DeleteUpload(User user, string path);
 	}
 
-	public class AvatarService : IAvatarService
+	public sealed class AvatarService : IAvatarService
 	{
-		private readonly IWebHostEnvironment _env;
-		private readonly UserManager<User> _um;
+		private readonly IWebHostEnvironment _environment;
+		private readonly UserManager<User> _userManager;
 
-		public AvatarService(IWebHostEnvironment env, UserManager<User> um)
+		public AvatarService(
+			IWebHostEnvironment environment,
+			UserManager<User> userManager)
 		{
-			_env = env;
-			_um = um;
+			_environment = environment;
+			_userManager = userManager;
 		}
 
-		public async Task<OperationResult> SetDefaultAvatar(User user, string file)
+		public async Task<OperationResult> SetDefaultAvatar(
+			User user,
+			string file)
 		{
-			var nameOnly = System.IO.Path.GetFileName(file);
-			var allowed = Enumerable.Range(1, 39).Select(i => $"default{i:00}.png").ToHashSet(StringComparer.OrdinalIgnoreCase);
-			if (!allowed.Contains(nameOnly)) return OperationResult.Fail("Invalid avatar.");
-			var physical = System.IO.Path.Combine(_env.WebRootPath, "images", "avatars", nameOnly);
-			if (!System.IO.File.Exists(physical)) return OperationResult.Fail("Avatar not found on server.");
-			user.AvatarPath = $"/images/avatars/{nameOnly}";
-			await _um.UpdateAsync(user);
-			return OperationResult.Success("Profile picture updated.", user.AvatarPath);
-		}
-
-		public async Task<OperationResult> UploadAvatar(User user, IFormFile file)
-		{
-			if (file == null || file.Length == 0) return OperationResult.Fail("Please choose an image file.");
-			var allowedTypes = new[] { "image/jpeg", "image/png", "image/webp" };
-			if (!allowedTypes.Contains(file.ContentType)) return OperationResult.Fail("Only JPEG, PNG or WEBP images are allowed.");
-			const long MAX = 2 * 1024 * 1024;
-			if (file.Length > MAX) return OperationResult.Fail("Image must be up to 2 MB.");
-			var userDir = System.IO.Path.Combine(_env.WebRootPath, "images", "avatars", "users", user.Id);
-			System.IO.Directory.CreateDirectory(userDir);
-			var ext = System.IO.Path.GetExtension(file.FileName).ToLowerInvariant();
-			if (ext is not (".jpg" or ".jpeg" or ".png" or ".webp"))
+			if (string.IsNullOrWhiteSpace(file) ||
+				Path.GetFileName(file) != file)
 			{
-				ext = file.ContentType switch
-				{
-					"image/jpeg" => ".jpg",
-					"image/png" => ".png",
-					"image/webp" => ".webp",
-					_ => ".jpg"
-				};
+				return OperationResult.Fail("Invalid avatar file.");
 			}
-			var stamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmssfff");
-			var fileName = $"avatar_{stamp}{ext}";
-			var fullPath = System.IO.Path.Combine(userDir, fileName);
-			await using (var stream = System.IO.File.Create(fullPath)) { await file.CopyToAsync(stream); }
-			user.AvatarPath = $"/images/avatars/users/{user.Id}/{fileName}";
-			await _um.UpdateAsync(user);
-			return OperationResult.Success("Profile picture updated.", user.AvatarPath);
+
+			user.AvatarPath = $"/images/avatars/{file}";
+
+			IdentityResult updateResult =
+				await _userManager.UpdateAsync(user);
+
+			return updateResult.Succeeded
+				? OperationResult.Success(
+					"Profile picture updated.",
+					user.AvatarPath)
+				: OperationResult.Fail(
+					"Avatar could not be updated.");
 		}
 
-		public async Task<OperationResult> SetUploadedAvatar(User user, string path)
+		public async Task<OperationResult> UploadAvatar(
+			User user,
+			IFormFile file)
 		{
-			if (string.IsNullOrWhiteSpace(path)) return OperationResult.Fail("Invalid image.");
-			var expectedPrefix = $"/images/avatars/users/{user.Id}/";
-			if (!path.StartsWith(expectedPrefix, StringComparison.OrdinalIgnoreCase)) return OperationResult.Fail("Not your image.");
-			var phys = System.IO.Path.Combine(_env.WebRootPath, path.TrimStart('/').Replace('/', System.IO.Path.DirectorySeparatorChar));
-			if (!System.IO.File.Exists(phys)) return OperationResult.Fail("Image not found.");
+			if (file == null || file.Length == 0)
+			{
+				return OperationResult.Fail(
+					"No file was provided.");
+			}
+
+			string extension = Path
+				.GetExtension(file.FileName)
+				.ToLowerInvariant();
+
+			if (extension is not ".jpg"
+				and not ".jpeg"
+				and not ".png"
+				and not ".webp")
+			{
+				return OperationResult.Fail(
+					"Unsupported image format.");
+			}
+
+			string uploadsRoot = GetAvatarDirectory(user.Id);
+			Directory.CreateDirectory(uploadsRoot);
+
+			string fileName = $"{Guid.NewGuid():N}{extension}";
+			string fullPath = Path.Combine(uploadsRoot, fileName);
+
+			await using FileStream stream = File.Create(fullPath);
+			await file.CopyToAsync(stream);
+
+			string webPath =
+				$"/uploads/avatars/{user.Id}/{fileName}";
+
+			return OperationResult.Success(
+				"Avatar uploaded.",
+				webPath);
+		}
+
+		public async Task<OperationResult> SetUploadedAvatar(
+			User user,
+			string path)
+		{
+			if (!TryResolveOwnedUpload(
+					user.Id,
+					path,
+					out string fullPath))
+			{
+				return OperationResult.Fail(
+					"Invalid avatar path.");
+			}
+
+			if (!File.Exists(fullPath))
+			{
+				return OperationResult.Fail(
+					"Avatar file was not found.");
+			}
+
 			user.AvatarPath = path;
-			await _um.UpdateAsync(user);
-			return OperationResult.Success("Profile picture updated.", user.AvatarPath);
+
+			IdentityResult updateResult =
+				await _userManager.UpdateAsync(user);
+
+			return updateResult.Succeeded
+				? OperationResult.Success(
+					"Profile picture updated.",
+					path)
+				: OperationResult.Fail(
+					"Avatar could not be updated.");
 		}
 
-		public Task<OperationResult> DeleteUpload(User user, string path)
+		public async Task<OperationResult> DeleteUpload(
+			User user,
+			string path)
 		{
-			if (string.IsNullOrWhiteSpace(path)) return Task.FromResult(OperationResult.Fail("Invalid path."));
-			var expectedPrefix = $"/images/avatars/users/{user.Id}/";
-			if (!path.StartsWith(expectedPrefix, StringComparison.OrdinalIgnoreCase)) return Task.FromResult(OperationResult.Fail("Not your image."));
-			var phys = System.IO.Path.Combine(_env.WebRootPath, path.TrimStart('/').Replace('/', System.IO.Path.DirectorySeparatorChar));
-			if (System.IO.File.Exists(phys)) System.IO.File.Delete(phys);
-			return Task.FromResult(OperationResult.Success("Deleted."));
+			if (!TryResolveOwnedUpload(
+					user.Id,
+					path,
+					out string fullPath))
+			{
+				return OperationResult.Fail(
+					"Invalid avatar path.");
+			}
+
+			if (!File.Exists(fullPath))
+			{
+				return OperationResult.Fail(
+					"Avatar file was not found.");
+			}
+
+			File.Delete(fullPath);
+
+			if (string.Equals(
+					user.AvatarPath,
+					path,
+					StringComparison.OrdinalIgnoreCase))
+			{
+				user.AvatarPath = null;
+
+				IdentityResult updateResult =
+					await _userManager.UpdateAsync(user);
+
+				if (!updateResult.Succeeded)
+				{
+					return OperationResult.Fail(
+						"Avatar record could not be updated.");
+				}
+			}
+
+			return OperationResult.Success("Deleted.");
+		}
+
+		private string GetAvatarDirectory(string userId)
+		{
+			string webRoot = string.IsNullOrWhiteSpace(
+					_environment.WebRootPath)
+				? Path.Combine(
+					_environment.ContentRootPath,
+					"wwwroot")
+				: _environment.WebRootPath;
+
+			return Path.Combine(
+				webRoot,
+				"uploads",
+				"avatars",
+				userId);
+		}
+
+		private bool TryResolveOwnedUpload(
+			string userId,
+			string? webPath,
+			out string fullPath)
+		{
+			fullPath = string.Empty;
+
+			if (string.IsNullOrWhiteSpace(webPath))
+			{
+				return false;
+			}
+
+			string expectedPrefix =
+				$"/uploads/avatars/{userId}/";
+
+			if (!webPath.StartsWith(
+					expectedPrefix,
+					StringComparison.OrdinalIgnoreCase))
+			{
+				return false;
+			}
+
+			try
+			{
+				string fileName = Path.GetFileName(webPath);
+				if (string.IsNullOrWhiteSpace(fileName))
+				{
+					return false;
+				}
+
+				string avatarDirectory = Path.GetFullPath(
+					GetAvatarDirectory(userId));
+
+				string candidate = Path.GetFullPath(
+					Path.Combine(avatarDirectory, fileName));
+
+				if (!candidate.StartsWith(
+						avatarDirectory + Path.DirectorySeparatorChar,
+						StringComparison.OrdinalIgnoreCase))
+				{
+					return false;
+				}
+
+				fullPath = candidate;
+				return true;
+			}
+			catch
+			{
+				return false;
+			}
 		}
 	}
 }

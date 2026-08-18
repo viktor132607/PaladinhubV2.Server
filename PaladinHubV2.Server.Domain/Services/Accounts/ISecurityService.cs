@@ -8,35 +8,59 @@ namespace PaladinHubV2.Server.Domain.Services.Accounts
 		Task ToggleTwoFactor(User me, bool enable);
 		Task<bool> GenerateRecoveryCodes(User me, int count);
 		Task LogoutAllDevices(User me);
+		Task LogoutCurrentSession();
+		Task MarkPhoneVerified(User me);
 	}
 
-	public class SecurityService : ISecurityService
+	public sealed class SecurityService : ISecurityService
 	{
-		private readonly UserManager<User> _um;
-		private readonly SignInManager<User> _sm;
+		private readonly UserManager<User> _userManager;
+		private readonly SignInManager<User> _signInManager;
 
-		public SecurityService(UserManager<User> um, SignInManager<User> sm)
+		public SecurityService(
+			UserManager<User> userManager,
+			SignInManager<User> signInManager)
 		{
-			_um = um;
-			_sm = sm;
+			_userManager = userManager;
+			_signInManager = signInManager;
 		}
 
 		public async Task ToggleTwoFactor(User me, bool enable)
 		{
-			await _um.SetTwoFactorEnabledAsync(me, enable);
+			await _userManager.SetTwoFactorEnabledAsync(me, enable);
 		}
 
-		public async Task<bool> GenerateRecoveryCodes(User me, int count)
+		public async Task<bool> GenerateRecoveryCodes(
+			User me,
+			int count)
 		{
-			if (!await _um.GetTwoFactorEnabledAsync(me)) return false;
-			await _um.GenerateNewTwoFactorRecoveryCodesAsync(me, count);
+			if (!await _userManager.GetTwoFactorEnabledAsync(me))
+			{
+				return false;
+			}
+
+			await _userManager.GenerateNewTwoFactorRecoveryCodesAsync(
+				me,
+				count);
+
 			return true;
 		}
 
 		public async Task LogoutAllDevices(User me)
 		{
-			await _um.UpdateSecurityStampAsync(me);
-			await _sm.SignOutAsync();
+			await _userManager.UpdateSecurityStampAsync(me);
+			await _signInManager.SignOutAsync();
+		}
+
+		public Task LogoutCurrentSession()
+		{
+			return _signInManager.SignOutAsync();
+		}
+
+		public async Task MarkPhoneVerified(User me)
+		{
+			me.PhoneNumberConfirmed = true;
+			await _userManager.UpdateAsync(me);
 		}
 	}
 }

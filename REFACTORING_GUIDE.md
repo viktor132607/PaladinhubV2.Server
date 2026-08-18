@@ -2,11 +2,7 @@
 
 This file is the reference pattern for future controller refactors in `PaladinHubV2.Server`.
 
-## Source-of-truth example: Checkout
-
-The original `CheckoutController` mixed HTTP concerns with checkout state management, cart synchronization, wallet charging, Stripe calls, transaction persistence, order finalization and response routing.
-
-The refactor follows this rule:
+## Core refactoring rules
 
 1. **Controllers own HTTP only**
    - routes and route compatibility
@@ -23,6 +19,7 @@ The refactor follows this rule:
 
 3. **State/infrastructure concerns get their own service**
    - session serialization/deserialization
+   - filesystem operations
    - state normalization
    - state reset
 
@@ -39,7 +36,11 @@ The refactor follows this rule:
 6. **Split controllers by responsibility after business logic is extracted**
    - do not split first and duplicate the same business logic across controllers
 
-## Checkout implementation
+---
+
+## Source-of-truth example 1: Checkout
+
+The original `CheckoutController` mixed HTTP concerns with checkout state management, cart synchronization, wallet charging, Stripe calls, transaction persistence, order finalization and response routing.
 
 ### Controllers
 
@@ -84,9 +85,91 @@ The refactor follows this rule:
   - Stripe payment verification
   - amount/currency/order/user verification
 
+---
+
+## Source-of-truth example 2: Account
+
+The original `AccountController` mixed account overview queries, transaction pagination, wallet top-up, promo redemption, checkout discount session state, avatar filesystem operations, profile/security mutation, logout and placeholder settings/connections endpoints.
+
+### Controllers
+
+- `AccountController`
+  - MyAccount
+  - Overview
+
+- `AccountRewardsController`
+  - RedeemCode
+  - DevTopUp
+
+- `AccountAvatarController`
+  - UploadAvatar
+  - SetUploadedAvatar
+  - DeleteUpload (POST and DELETE compatibility routes)
+  - SetDefaultAvatar
+
+- `AccountProfileController`
+  - Settings
+  - AccountDetails
+  - Privacy
+  - MarkPhoneVerified
+  - profile/address placeholder endpoints
+
+- `AccountConnectionsController`
+  - Connections
+  - ConnectProvider
+  - RemoveApp
+
+- `AccountSessionController`
+  - Logout
+
+All controllers keep the shared legacy/API route bases:
+
+- `/Account/...`
+- `/api/account/...`
+
+### Services
+
+- `IAccountOverviewService` / `AccountOverviewService`
+  - account dashboard model composition
+  - recent transactions
+  - overview transaction pagination
+  - wallet balance
+  - security score/tips
+  - uploaded-avatar list
+
+- `IAccountRewardsService` / `AccountRewardsService`
+  - promo redemption orchestration
+  - promo failure classification
+  - checkout discount session state
+  - developer wallet top-up orchestration
+
+- `IAvatarService` / `AvatarService`
+  - upload filesystem operations
+  - owned-upload path validation
+  - selecting uploaded/default avatars
+  - deleting uploads
+  - clearing active avatar when its uploaded file is deleted
+
+- `ISecurityService` / `SecurityService`
+  - current-session logout
+  - phone verification mutation
+  - existing 2FA/recovery/logout-all functionality
+
+- `IAccountUiService` / `AccountUiService`
+  - current-user lookup
+  - security-score calculation
+  - region/currency compatibility helpers
+  - uploaded-avatar enumeration
+
+### Account-specific rule learned
+
+Before creating a new service, inspect existing domain services. The Account refactor reused and extended `IAvatarService`, `ISecurityService`, `IWalletService`, `IPromoCodeService` and `IAccountUiService` instead of copying their responsibilities into new services.
+
+---
+
 ## Pattern for the next large controller
 
-When asked to "refactor this controller like Checkout":
+When asked to "refactor this controller like Checkout" or "do the same as Account":
 
 1. Read the entire controller and list each responsibility.
 2. Identify existing services before creating new ones.
@@ -98,6 +181,7 @@ When asked to "refactor this controller like Checkout":
 8. Preserve existing routes and response contracts unless explicitly told to change them.
 9. Check for duplicated legacy/API routes and remove them only as a separate migration step.
 10. Build/test before committing whenever the environment permits it.
+11. If no .NET SDK/CI is available, perform source-level dependency, route and diff checks and state that compile verification is still pending.
 
 ## Repository workflow
 
