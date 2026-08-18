@@ -12,6 +12,7 @@ using PaladinHubV2.Server.API.ServiceExtensions;
 using PaladinHubV2.Server.Data;
 using PaladinHubV2.Server.Data.Seed;
 using PaladinHubV2.Server.Data.Seed.Contracts;
+using PaladinHubV2.Server.Domain.Services.Checkout;
 
 LoadEnvironmentFile();
 
@@ -32,6 +33,22 @@ builder.Services.Configure<ForwardedHeadersOptions>(
 builder.Services.AddPaladinHubApp(
 	builder.Configuration,
 	builder.Environment);
+
+builder.Services.AddScoped<
+	ICheckoutStateService,
+	CheckoutStateService>();
+
+builder.Services.AddScoped<
+	ICheckoutOrderService,
+	CheckoutOrderService>();
+
+builder.Services.AddScoped<
+	ICheckoutPaymentService,
+	CheckoutPaymentService>();
+
+builder.Services.AddScoped<
+	ICheckoutService,
+	CheckoutService>();
 
 ConfigureHttpPort(builder);
 
