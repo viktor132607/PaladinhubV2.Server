@@ -20,6 +20,8 @@ using PaladinHubV2.Server.Domain.Services.GameData;
 using PaladinHubV2.Server.Domain.Services.ItemsService;
 using PaladinHubV2.Server.Domain.Services.PageBuilder;
 using PaladinHubV2.Server.Domain.Services.Paladin;
+using PaladinHubV2.Server.Domain.Services.Payments;
+using PaladinHubV2.Server.Domain.Services.Presets;
 using PaladinHubV2.Server.Domain.Services.Products;
 using PaladinHubV2.Server.Domain.Services.Promos;
 using PaladinHubV2.Server.Domain.Services.SpellbookService;
@@ -63,6 +65,17 @@ builder.Services.AddScoped<IPaladinPageService, PaladinPageService>();
 builder.Services.AddScoped<IPromoCodeAdminService, PromoCodeAdminService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IAccountSecurityApplicationService, AccountSecurityApplicationService>();
+
+builder.Services.AddScoped<IAccountIdentityService, AccountIdentityService>();
+builder.Services.AddScoped<IAccountSecurityScoreService, AccountSecurityScoreService>();
+builder.Services.AddScoped<IAccountRegionService, AccountRegionService>();
+builder.Services.AddScoped<IAccountAvatarDiscoveryService, AccountAvatarDiscoveryService>();
+builder.Services.AddScoped<IPaymentMethodsPageService, PaymentMethodsPageService>();
+builder.Services.AddScoped<IPaymentMethodsStore, PaymentMethodsStore>();
+builder.Services.AddScoped<IStripePaymentMethodsGateway, StripePaymentMethodsGateway>();
+builder.Services.AddScoped<IPresetDataResolver, ItemPresetDataResolver>();
+builder.Services.AddScoped<IPresetDataResolver, SpellPresetDataResolver>();
+builder.Services.AddScoped<IPresetDataResolver, BuildNodePresetDataResolver>();
 
 ConfigureHttpPort(builder);
 
