@@ -36,6 +36,14 @@ This file is the reference pattern for future controller refactors in `PaladinHu
 6. **Split controllers by responsibility after business logic is extracted**
    - do not split first and duplicate the same business logic across controllers
 
+7. **Never change working behavior during a refactor unless a functional change is explicitly requested**
+   - if existing V2 behavior is known to work, preserve it exactly even if it looks unusual, inefficient, misleadingly named or inconsistent with common conventions
+   - when restoring or comparing functionality with a working V1 implementation, treat the working V1 behavior as the source of truth unless explicitly instructed otherwise
+   - do not "fix", reinterpret, modernize or simplify business rules, thresholds, ranges, calculations, ordering, defaults, status codes, routes, response shapes or side effects based only on developer judgment
+   - a refactor is a structural/code-quality change, not permission to alter product behavior
+   - functional changes and bug fixes require either an explicit request or confirmed evidence that the existing behavior is actually broken
+   - if behavior looks suspicious but its intent is uncertain, preserve it and flag it separately instead of silently changing it
+
 ---
 
 ## Source-of-truth example 1: Checkout
@@ -314,15 +322,16 @@ When asked to "refactor this controller like Checkout" or "do the same as Accoun
 
 1. Read the entire controller and list each responsibility.
 2. Identify existing services before creating new ones.
-3. Move business logic into the appropriate existing/new domain services.
+3. Move business logic into the appropriate existing/new domain services without changing working behavior.
 4. Add interfaces where useful for DI/testing.
 5. Register new services in application DI startup.
 6. Keep controller actions thin.
 7. Split the controller only along clear HTTP/domain boundaries.
-8. Preserve existing routes and response contracts unless explicitly told to change them.
-9. Check for duplicated legacy/API routes and remove them only as a separate migration step.
-10. Build/test before committing whenever the environment permits it.
-11. If no .NET SDK/CI is available, perform source-level dependency, route and diff checks and state that compile verification is still pending.
+8. Preserve existing routes, response contracts and established business behavior unless explicitly told to change them.
+9. If V1 is the known-working reference for a V2 feature, compare against V1 before treating unusual behavior as a bug.
+10. Check for duplicated legacy/API routes and remove them only as a separate migration step.
+11. Build/test before committing whenever the environment permits it.
+12. If no .NET SDK/CI is available, perform source-level dependency, route and diff checks and state that compile verification is still pending.
 
 ## Repository workflow
 
