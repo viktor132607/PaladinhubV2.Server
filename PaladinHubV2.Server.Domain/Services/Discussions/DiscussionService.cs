@@ -1,40 +1,69 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
+using PaladinHub.Models.Discussions;
+using PaladinHubV2.Server.Common.Responses.Discussions;
 using PaladinHubV2.Server.Data;
 using PaladinHubV2.Server.Data.Entities;
-using PaladinHub.Models.Discussions;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 
 namespace PaladinHubV2.Server.Domain.Services.Discussions
 {
-
-	public class DiscussionService : IDiscussionService
+	public sealed class DiscussionService : IDiscussionService
 	{
 		private readonly AppDbContext _context;
-		public DiscussionService(AppDbContext context) => _context = context;
 
-		public async Task<IEnumerable<DiscussionPost>> GetAllAsync()
-			=> await _context.DiscussionPosts
-				.Include(p => p.Author)
-				.Include(p => p.Comments)
-				.OrderByDescending(p => p.CreatedOn)
+		public DiscussionService(AppDbContext context)
+		{
+			_context = context;
+		}
+
+		public async Task<IReadOnlyList<DiscussionListItemResponse>> GetAllAsync(
+			string? currentUserId,
+			bool isAdmin)
+		{
+			var posts = await _context.DiscussionPosts
+				.AsNoTracking()
+				.Include(post => post.Author)
+				.Include(post => post.Comments)
+				.OrderByDescending(post => post.CreatedOn)
 				.ToListAsync();
 
-		public async Task<DiscussionPost?> GetByIdAsync(Guid id)
-			=> await _context.DiscussionPosts
-				.Include(p => p.Author)
-				.Include(p => p.Comments).ThenInclude(c => c.Author)
-				.Include(p => p.LikesCollection)
-				.FirstOrDefaultAsync(p => p.Id == id);
+			return posts
+				.Select(post => new DiscussionListItemResponse(
+					post.Id,
+					post.Title,
+					post.Content,
+					post.AuthorId,
+					post.Author?.UserName ?? "Unknown user",
+					post.CreatedOn,
+					post.Comments.Count,
+					post.Likes,
+					CanDelete(post.AuthorId, currentUserId, isAdmin)))
+				.ToList();
+		}
 
-		public async Task<DiscussionComment?> GetCommentByIdAsync(Guid id)
-			=> await _context.DiscussionComments
-				.Include(c => c.Post)
-				.FirstOrDefaultAsync(c => c.Id == id);
+		public async Task<DiscussionDetailsResponse?> GetByIdAsync(
+			Guid id,
+			string? currentUserId,
+			bool isAdmin)
+		{
+			var post = await _context.DiscussionPosts
+				.AsNoTracking()
+				.Include(current => current.Author)
+				.Include(current => current.LikesCollection)
+				.Include(current => current.Comments)
+					.ThenInclude(comment => comment.Author)
+				.Include(current => current.Comments)
+					.ThenInclude(comment => comment.LikesCollection)
+				.FirstOrDefaultAsync(current => current.Id == id);
 
-		public async Task CreateAsync(string userId, CreatePostViewModel model)
+			return post == null
+				? null
+				: ToDetails(post, currentUserId, isAdmin);
+		}
+
+		public async Task<DiscussionDetailsResponse> CreateAsync(
+			string userId,
+			CreatePostViewModel model,
+			bool isAdmin)
 		{
 			var post = new DiscussionPost
 			{
@@ -43,33 +72,62 @@ namespace PaladinHubV2.Server.Domain.Services.Discussions
 				AuthorId = userId,
 				CreatedOn = DateTime.UtcNow
 			};
+
 			_context.DiscussionPosts.Add(post);
 			await _context.SaveChangesAsync();
+
+			return (await GetByIdAsync(post.Id, userId, isAdmin))!;
 		}
 
-		public async Task<bool> DeleteAsync(Guid id, string userId, bool isAdmin)
+		public async Task<bool> DeleteAsync(
+			Guid id,
+			string userId,
+			bool isAdmin)
 		{
-			var post = await _context.DiscussionPosts.FirstOrDefaultAsync(p => p.Id == id);
-			if (post == null) return false;
-			if (!isAdmin && post.AuthorId != userId) return false;
+			var post = await _context.DiscussionPosts
+				.FirstOrDefaultAsync(current => current.Id == id);
+
+			if (post == null)
+			{
+				return false;
+			}
+
+			if (!isAdmin && post.AuthorId != userId)
+			{
+				return false;
+			}
 
 			_context.DiscussionPosts.Remove(post);
 			await _context.SaveChangesAsync();
+
 			return true;
 		}
 
-		public async Task<bool> ToggleLikeAsync(Guid postId, string userId)
+		public async Task<DiscussionDetailsResponse?> ToggleLikeAsync(
+			Guid postId,
+			string userId,
+			bool isAdmin)
 		{
 			var post = await _context.DiscussionPosts.FindAsync(postId);
-			if (post == null) return false;
+
+			if (post == null)
+			{
+				return null;
+			}
 
 			var like = await _context.DiscussionLikes
-				.FirstOrDefaultAsync(l => l.PostId == postId && l.UserId == userId);
+				.FirstOrDefaultAsync(current =>
+					current.PostId == postId &&
+					current.UserId == userId);
 
 			if (like != null)
 			{
 				_context.DiscussionLikes.Remove(like);
-				if (post.Likes > 0) post.Likes--;
+
+				if (post.Likes > 0)
+				{
+					post.Likes--;
+				}
 			}
 			else
 			{
@@ -78,44 +136,78 @@ namespace PaladinHubV2.Server.Domain.Services.Discussions
 					PostId = postId,
 					UserId = userId
 				});
+
 				post.Likes++;
 			}
 
 			await _context.SaveChangesAsync();
-			return true;
+
+			return await GetByIdAsync(postId, userId, isAdmin);
 		}
 
-		public async Task<bool> ToggleCommentLikeAsync(Guid commentId, string userId)
+		public async Task<DiscussionDetailsResponse?> ToggleCommentLikeAsync(
+			Guid postId,
+			Guid commentId,
+			string userId,
+			bool isAdmin)
 		{
-			var comment = await _context.DiscussionComments.FindAsync(commentId);
-			if (comment == null) return false;
+			var comment = await _context.DiscussionComments
+				.FindAsync(commentId);
+
+			if (comment == null || comment.PostId != postId)
+			{
+				return null;
+			}
 
 			var like = await _context.DiscussionCommentLikes
-				.FirstOrDefaultAsync(l => l.CommentId == commentId && l.UserId == userId);
+				.FirstOrDefaultAsync(current =>
+					current.CommentId == commentId &&
+					current.UserId == userId);
 
 			if (like != null)
 			{
 				_context.DiscussionCommentLikes.Remove(like);
-				if (comment.Likes > 0) comment.Likes--;
+
+				if (comment.Likes > 0)
+				{
+					comment.Likes--;
+				}
 			}
 			else
 			{
-				_context.DiscussionCommentLikes.Add(new DiscussionCommentLike
-				{
-					CommentId = commentId,
-					UserId = userId
-				});
+				_context.DiscussionCommentLikes.Add(
+					new DiscussionCommentLike
+					{
+						CommentId = commentId,
+						UserId = userId
+					});
+
 				comment.Likes++;
 			}
 
 			await _context.SaveChangesAsync();
-			return true;
+
+			return await GetByIdAsync(postId, userId, isAdmin);
 		}
 
-		public async Task<bool> AddCommentAsync(Guid postId, string userId, string content)
+		public async Task<DiscussionDetailsResponse?> AddCommentAsync(
+			Guid postId,
+			string userId,
+			string content,
+			bool isAdmin)
 		{
-			var postExists = await _context.DiscussionPosts.AnyAsync(p => p.Id == postId);
-			if (!postExists) return false;
+			if (string.IsNullOrWhiteSpace(content))
+			{
+				return await GetByIdAsync(postId, userId, isAdmin);
+			}
+
+			var postExists = await _context.DiscussionPosts
+				.AnyAsync(post => post.Id == postId);
+
+			if (!postExists)
+			{
+				return null;
+			}
 
 			_context.DiscussionComments.Add(new DiscussionComment
 			{
@@ -126,7 +218,52 @@ namespace PaladinHubV2.Server.Domain.Services.Discussions
 			});
 
 			await _context.SaveChangesAsync();
-			return true;
+
+			return await GetByIdAsync(postId, userId, isAdmin);
+		}
+
+		private static DiscussionDetailsResponse ToDetails(
+			DiscussionPost post,
+			string? currentUserId,
+			bool isAdmin)
+		{
+			var comments = post.Comments
+				.OrderByDescending(comment => comment.CreatedOn)
+				.Select(comment => new DiscussionCommentResponse(
+					comment.Id,
+					comment.AuthorId,
+					comment.Author?.UserName ?? "Unknown user",
+					comment.Content,
+					comment.CreatedOn,
+					comment.Likes,
+					currentUserId != null &&
+					comment.LikesCollection.Any(like =>
+						like.UserId == currentUserId)))
+				.ToList();
+
+			return new DiscussionDetailsResponse(
+				post.Id,
+				post.Title,
+				post.Content,
+				post.AuthorId,
+				post.Author?.UserName ?? "Unknown user",
+				post.CreatedOn,
+				post.EditedOn,
+				post.Likes,
+				currentUserId != null &&
+				post.LikesCollection.Any(like =>
+					like.UserId == currentUserId),
+				CanDelete(post.AuthorId, currentUserId, isAdmin),
+				comments);
+		}
+
+		private static bool CanDelete(
+			string authorId,
+			string? currentUserId,
+			bool isAdmin)
+		{
+			return currentUserId != null &&
+				(isAdmin || authorId == currentUserId);
 		}
 	}
 }

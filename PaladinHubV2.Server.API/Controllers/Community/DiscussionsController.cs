@@ -2,140 +2,195 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using PaladinHub.Models.Discussions;
+using PaladinHubV2.Server.Common.Requests.Discussions;
+using PaladinHubV2.Server.Common.Responses.Discussions;
 using PaladinHubV2.Server.Data.Entities;
 using PaladinHubV2.Server.Domain.Services.Discussions;
 
 namespace PaladinHubV2.Server.API.Controllers.Community
 {
+	[ApiController]
 	[Authorize]
-	public sealed class DiscussionsController : Controller
+	[AutoValidateAntiforgeryToken]
+	[Route("api/discussions")]
+	public sealed class DiscussionsController : ControllerBase
 	{
-		private readonly IDiscussionService _discussionService;
+		private readonly IDiscussionService _discussions;
 		private readonly UserManager<User> _userManager;
 
 		public DiscussionsController(
-			IDiscussionService discussionService,
+			IDiscussionService discussions,
 			UserManager<User> userManager)
 		{
-			_discussionService = discussionService;
+			_discussions = discussions;
 			_userManager = userManager;
 		}
 
 		[AllowAnonymous]
+		[HttpGet]
+		[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 		public async Task<IActionResult> Index()
 		{
-			var posts = await _discussionService.GetAllAsync();
-			return View(posts);
+			var posts = await _discussions.GetAllAsync(
+				CurrentUserId(),
+				IsAdmin());
+
+			return Ok(posts);
 		}
 
 		[AllowAnonymous]
-		public async Task<IActionResult> Details(Guid id)
+		[HttpGet("{id:guid}")]
+		[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+		public async Task<IActionResult> Details(
+			[FromRoute] Guid id)
 		{
-			var post = await _discussionService.GetByIdAsync(id);
-
-			if (post == null)
-			{
-				return NotFound();
-			}
-
-			return View(new PostDetailsViewModel
-			{
-				Post = post
-			});
-		}
-
-		public IActionResult Create()
-		{
-			return View(new CreatePostViewModel());
-		}
-
-		[HttpPost]
-		[ValidateAntiForgeryToken]
-		public async Task<IActionResult> Create(
-			CreatePostViewModel model)
-		{
-			if (!ModelState.IsValid)
-			{
-				return View(model);
-			}
-
-			await _discussionService.CreateAsync(
-				CurrentUserId(),
-				model);
-
-			return RedirectToAction(nameof(Index));
-		}
-
-		[HttpPost]
-		[ValidateAntiForgeryToken]
-		public async Task<IActionResult> Delete(Guid id)
-		{
-			bool deleted = await _discussionService.DeleteAsync(
+			var post = await _discussions.GetByIdAsync(
 				id,
 				CurrentUserId(),
-				User.IsInRole("Admin"));
+				IsAdmin());
+
+			return post == null
+				? NotFound(new { message = "Discussion not found." })
+				: Ok(post);
+		}
+
+		[HttpPost]
+		public async Task<IActionResult> Create(
+			[FromBody] CreatePostViewModel model)
+		{
+			var userId = CurrentUserId();
+
+			if (userId == null)
+			{
+				return Unauthorized(new
+				{
+					message = "Authentication required."
+				});
+			}
+
+			DiscussionDetailsResponse created =
+				await _discussions.CreateAsync(
+					userId,
+					model,
+					IsAdmin());
+
+			return CreatedAtAction(
+				nameof(Details),
+				new { id = created.Id },
+				created);
+		}
+
+		[HttpDelete("{id:guid}")]
+		public async Task<IActionResult> Delete(
+			[FromRoute] Guid id)
+		{
+			var userId = CurrentUserId();
+
+			if (userId == null)
+			{
+				return Unauthorized(new
+				{
+					message = "Authentication required."
+				});
+			}
+
+			bool deleted = await _discussions.DeleteAsync(
+				id,
+				userId,
+				IsAdmin());
 
 			return deleted
-				? RedirectToAction(nameof(Index))
+				? NoContent()
 				: Forbid();
 		}
 
-		[HttpPost]
-		[ValidateAntiForgeryToken]
-		public async Task<IActionResult> Like(Guid id)
+		[HttpPost("{id:guid}/like")]
+		public async Task<IActionResult> Like(
+			[FromRoute] Guid id)
 		{
-			await _discussionService.ToggleLikeAsync(
-				id,
-				CurrentUserId());
+			var userId = CurrentUserId();
 
-			return RedirectToDetails(id);
-		}
-
-		[HttpPost]
-		[ValidateAntiForgeryToken]
-		public async Task<IActionResult> LikeComment(Guid id)
-		{
-			await _discussionService.ToggleCommentLikeAsync(
-				id,
-				CurrentUserId());
-
-			var comment =
-				await _discussionService.GetCommentByIdAsync(id);
-
-			return comment == null
-				? RedirectToAction(nameof(Index))
-				: RedirectToDetails(comment.PostId);
-		}
-
-		[HttpPost]
-		[ValidateAntiForgeryToken]
-		public async Task<IActionResult> AddComment(
-			Guid id,
-			PostDetailsViewModel model)
-		{
-			if (string.IsNullOrWhiteSpace(model?.NewComment))
+			if (userId == null)
 			{
-				return RedirectToDetails(id);
+				return Unauthorized(new
+				{
+					message = "Authentication required."
+				});
 			}
 
-			await _discussionService.AddCommentAsync(
+			var post = await _discussions.ToggleLikeAsync(
 				id,
-				CurrentUserId(),
-				model.NewComment);
+				userId,
+				IsAdmin());
 
-			return RedirectToDetails(id);
+			return post == null
+				? NotFound(new { message = "Discussion not found." })
+				: Ok(post);
 		}
 
-		private string CurrentUserId()
+		[HttpPost("{id:guid}/comments")]
+		public async Task<IActionResult> AddComment(
+			[FromRoute] Guid id,
+			[FromBody] AddDiscussionCommentRequest request)
 		{
-			return _userManager.GetUserId(User)!;
+			var userId = CurrentUserId();
+
+			if (userId == null)
+			{
+				return Unauthorized(new
+				{
+					message = "Authentication required."
+				});
+			}
+
+			var post = await _discussions.AddCommentAsync(
+				id,
+				userId,
+				request.Content,
+				IsAdmin());
+
+			return post == null
+				? NotFound(new { message = "Discussion not found." })
+				: Ok(post);
 		}
 
-		private IActionResult RedirectToDetails(Guid id)
+		[HttpPost("{postId:guid}/comments/{commentId:guid}/like")]
+		public async Task<IActionResult> LikeComment(
+			[FromRoute] Guid postId,
+			[FromRoute] Guid commentId)
 		{
-			return RedirectToAction(
-				nameof(Details),
-				new { id });
+			var userId = CurrentUserId();
+
+			if (userId == null)
+			{
+				return Unauthorized(new
+				{
+					message = "Authentication required."
+				});
+			}
+
+			var post = await _discussions.ToggleCommentLikeAsync(
+				postId,
+				commentId,
+				userId,
+				IsAdmin());
+
+			return post == null
+				? NotFound(new { message = "Comment not found." })
+				: Ok(post);
+		}
+
+		private string? CurrentUserId()
+		{
+			return User.Identity?.IsAuthenticated == true
+				? _userManager.GetUserId(User)
+				: null;
+		}
+
+		private bool IsAdmin()
+		{
+			return User.Identity?.IsAuthenticated == true &&
+				User.IsInRole("Admin");
 		}
 	}
 }

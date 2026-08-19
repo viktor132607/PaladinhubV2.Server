@@ -1,20 +1,44 @@
-﻿using PaladinHubV2.Server.Data.Entities;
 using PaladinHub.Models.Discussions;
+using PaladinHubV2.Server.Common.Responses.Discussions;
 
 namespace PaladinHubV2.Server.Domain.Services.Discussions
 {
 	public interface IDiscussionService
 	{
-		Task<IEnumerable<DiscussionPost>> GetAllAsync();
-		Task<DiscussionPost?> GetByIdAsync(Guid id);
-		Task<DiscussionComment?> GetCommentByIdAsync(Guid id);
+		Task<IReadOnlyList<DiscussionListItemResponse>> GetAllAsync(
+			string? currentUserId,
+			bool isAdmin);
 
-		Task CreateAsync(string userId, CreatePostViewModel model);
-		Task<bool> DeleteAsync(Guid id, string userId, bool isAdmin);
+		Task<DiscussionDetailsResponse?> GetByIdAsync(
+			Guid id,
+			string? currentUserId,
+			bool isAdmin);
 
-		Task<bool> ToggleLikeAsync(Guid postId, string userId);
-		Task<bool> ToggleCommentLikeAsync(Guid commentId, string userId);
+		Task<DiscussionDetailsResponse> CreateAsync(
+			string userId,
+			CreatePostViewModel model,
+			bool isAdmin);
 
-		Task<bool> AddCommentAsync(Guid postId, string userId, string content);
+		Task<bool> DeleteAsync(
+			Guid id,
+			string userId,
+			bool isAdmin);
+
+		Task<DiscussionDetailsResponse?> ToggleLikeAsync(
+			Guid postId,
+			string userId,
+			bool isAdmin);
+
+		Task<DiscussionDetailsResponse?> ToggleCommentLikeAsync(
+			Guid postId,
+			Guid commentId,
+			string userId,
+			bool isAdmin);
+
+		Task<DiscussionDetailsResponse?> AddCommentAsync(
+			Guid postId,
+			string userId,
+			string content,
+			bool isAdmin);
 	}
 }
