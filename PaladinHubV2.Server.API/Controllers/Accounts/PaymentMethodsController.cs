@@ -26,32 +26,21 @@ namespace PaladinHubV2.Server.API.Controllers.Accounts
 		[HttpGet("PaymentMethods")]
 		public async Task<IActionResult> PaymentMethods()
 		{
-			User? user = await GetCurrentUser();
+			PaymentMethodsPageData? page =
+				await _paymentMethods.GetPageAsync(User);
 
-			if (user == null)
+			if (page == null)
 			{
 				return AuthenticationRequired();
 			}
 
-			string regionCode =
-				_ui.ReadRegionCookie() ?? "EU";
-
-			string currency =
-				_ui.GetCurrencyForRegion(regionCode);
-
-			decimal balance =
-				await _ui.GetBalance(user.Id);
-
-			var methods =
-				await _paymentMethods.GetMethods(user);
-
 			return Ok(new
 			{
-				region = _ui.RegionDisplay(regionCode),
-				regionCode,
-				currency,
-				balance,
-				methods = methods.Select(method => new
+				region = page.Region,
+				regionCode = page.RegionCode,
+				currency = page.Currency,
+				balance = page.Balance,
+				methods = page.Methods.Select(method => new
 				{
 					method.Id,
 					method.Brand,

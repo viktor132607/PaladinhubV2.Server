@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using PaladinHub.Models.GameData;
 using PaladinHubV2.Server.Data;
 using PaladinHubV2.Server.Data.Entities;
 
@@ -25,10 +26,18 @@ namespace PaladinHubV2.Server.Domain.Services.SpellbookService
 		}
 
 		public async Task<Spell> CreateAsync(
-			Spell spell,
+			SpellAdminRequest request,
 			CancellationToken cancellationToken = default)
 		{
-			spell.Id = 0;
+			var spell = new Spell
+			{
+				Name = request.Name,
+				Icon = request.Icon,
+				Description = request.Description,
+				Url = request.Url,
+				Quality = request.Quality
+			};
+
 			Normalize(spell);
 			_db.Spells.Add(spell);
 			await _db.SaveChangesAsync(cancellationToken);
@@ -48,7 +57,7 @@ namespace PaladinHubV2.Server.Domain.Services.SpellbookService
 
 		public async Task<Spell?> UpdateAsync(
 			int id,
-			Spell spell,
+			SpellAdminRequest request,
 			CancellationToken cancellationToken = default)
 		{
 			Spell? existing = await _db.Spells
@@ -61,11 +70,12 @@ namespace PaladinHubV2.Server.Domain.Services.SpellbookService
 				return null;
 			}
 
-			existing.Name = spell.Name;
-			existing.Icon = spell.Icon;
-			existing.Description = spell.Description;
-			existing.Url = spell.Url;
-			existing.Quality = spell.Quality;
+			existing.Name = request.Name;
+			existing.Icon = request.Icon;
+			existing.Description = request.Description;
+			existing.Url = request.Url;
+			existing.Quality = request.Quality;
+
 			Normalize(existing);
 
 			await _db.SaveChangesAsync(cancellationToken);

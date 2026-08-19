@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using PaladinHub.Models.GameData;
 using PaladinHubV2.Server.Data;
 using PaladinHubV2.Server.Data.Entities;
 
@@ -24,10 +25,21 @@ namespace PaladinHubV2.Server.Domain.Services.ItemsService
 		}
 
 		public async Task<Item> CreateAsync(
-			Item item,
+			ItemAdminRequest request,
 			CancellationToken cancellationToken = default)
 		{
-			item.Id = 0;
+			var item = new Item
+			{
+				Name = request.Name,
+				Icon = request.Icon,
+				SecondIcon = request.SecondIcon,
+				Description = request.Description,
+				Url = request.Url,
+				ItemLevel = request.ItemLevel,
+				RequiredLevel = request.RequiredLevel,
+				Quality = request.Quality
+			};
+
 			Normalize(item);
 			_db.Items.Add(item);
 			await _db.SaveChangesAsync(cancellationToken);
@@ -47,7 +59,7 @@ namespace PaladinHubV2.Server.Domain.Services.ItemsService
 
 		public async Task<Item?> UpdateAsync(
 			int id,
-			Item item,
+			ItemAdminRequest request,
 			CancellationToken cancellationToken = default)
 		{
 			Item? existing = await _db.Items
@@ -60,14 +72,16 @@ namespace PaladinHubV2.Server.Domain.Services.ItemsService
 				return null;
 			}
 
-			existing.Name = item.Name.Trim();
-			existing.Icon = NormalizeOptional(item.Icon);
-			existing.SecondIcon = NormalizeOptional(item.SecondIcon);
-			existing.Description = NormalizeOptional(item.Description);
-			existing.Url = NormalizeOptional(item.Url);
-			existing.ItemLevel = item.ItemLevel;
-			existing.RequiredLevel = item.RequiredLevel;
-			existing.Quality = NormalizeOptional(item.Quality);
+			existing.Name = request.Name;
+			existing.Icon = request.Icon;
+			existing.SecondIcon = request.SecondIcon;
+			existing.Description = request.Description;
+			existing.Url = request.Url;
+			existing.ItemLevel = request.ItemLevel;
+			existing.RequiredLevel = request.RequiredLevel;
+			existing.Quality = request.Quality;
+
+			Normalize(existing);
 
 			await _db.SaveChangesAsync(cancellationToken);
 			return existing;

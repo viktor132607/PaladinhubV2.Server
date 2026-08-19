@@ -28,15 +28,19 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 		}
 
 		[HttpGet("Card")]
-		[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+		[ResponseCache(
+			NoStore = true,
+			Location = ResponseCacheLocation.None)]
 		public async Task<IActionResult> Card(
 			CancellationToken cancellationToken)
 		{
-			User? user = await _userManager.GetUserAsync(User);
+			User? user =
+				await _userManager.GetUserAsync(User);
 
 			if (user == null)
 			{
-				return Unauthorized(new { message = "Authentication required." });
+				return Unauthorized(
+					new { message = "Authentication required." });
 			}
 
 			CheckoutState state = _state.Get();
@@ -82,16 +86,25 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 			[FromBody] CardFinalizeRequest request,
 			CancellationToken cancellationToken)
 		{
-			if (request == null || string.IsNullOrWhiteSpace(request.PaymentIntentId))
+			if (request == null ||
+				string.IsNullOrWhiteSpace(
+					request.PaymentIntentId))
 			{
-				return BadRequest(new { message = "Payment intent ID is required." });
+				return BadRequest(
+					new
+					{
+						message =
+							"Payment intent ID is required."
+					});
 			}
 
-			User? user = await _userManager.GetUserAsync(User);
+			User? user =
+				await _userManager.GetUserAsync(User);
 
 			if (user == null)
 			{
-				return Unauthorized(new { message = "Authentication required." });
+				return Unauthorized(
+					new { message = "Authentication required." });
 			}
 
 			CheckoutState state = _state.Get();
@@ -109,12 +122,16 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 			{
 				return result.Code switch
 				{
-					CheckoutResultCode.StripeVerificationFailed => StatusCode(
-						StatusCodes.Status502BadGateway,
-						new { message = result.Message }),
-					CheckoutResultCode.CartTotalChanged => Conflict(
-						new { message = result.Message }),
-					_ => BadRequest(new { message = result.Message })
+					CheckoutResultCode.StripeVerificationFailed =>
+						StatusCode(
+							StatusCodes.Status502BadGateway,
+							new { message = result.Message }),
+					CheckoutResultCode.CartTotalChanged =>
+						Conflict(
+							new { message = result.Message }),
+					_ =>
+						BadRequest(
+							new { message = result.Message })
 				};
 			}
 
@@ -131,11 +148,6 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 				orderId = value.OrderId,
 				redirect = value.Redirect
 			});
-		}
-
-		public sealed class CardFinalizeRequest
-		{
-			public string PaymentIntentId { get; init; } = string.Empty;
 		}
 	}
 }

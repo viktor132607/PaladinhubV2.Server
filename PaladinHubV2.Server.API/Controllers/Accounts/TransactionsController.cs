@@ -1,4 +1,3 @@
-using System;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -14,7 +13,6 @@ namespace PaladinHubV2.Server.API.Controllers.Accounts
 	public sealed class TransactionsController : ControllerBase
 	{
 		private const int DefaultPageSize = 10;
-		private const int MaximumPageSize = 100;
 		private const string DefaultRegion = "Europe";
 
 		private readonly ITransactionsService _transactionsService;
@@ -61,7 +59,7 @@ namespace PaladinHubV2.Server.API.Controllers.Accounts
 		private async Task<IActionResult> GetHistory(
 			int page,
 			int pageSize,
-			string? region)
+			string region)
 		{
 			string? userId =
 				_accountUiService.GetUserId(User);
@@ -74,26 +72,12 @@ namespace PaladinHubV2.Server.API.Controllers.Accounts
 				});
 			}
 
-			int normalizedPage =
-				Math.Max(1, page);
-
-			int normalizedPageSize =
-				Math.Clamp(
-					pageSize,
-					1,
-					MaximumPageSize);
-
-			string normalizedRegion =
-				string.IsNullOrWhiteSpace(region)
-					? DefaultRegion
-					: region.Trim();
-
 			var history =
-				await _transactionsService.GetHistory(
+				await _transactionsService.GetHistoryForRequest(
 					userId,
-					normalizedRegion,
-					normalizedPage,
-					normalizedPageSize);
+					region,
+					page,
+					pageSize);
 
 			return Ok(history);
 		}

@@ -12,12 +12,40 @@ namespace PaladinHubV2.Server.Domain.Services.Transactions
 	{
 		private const int DefaultPageSize = 10;
 		private const int MaximumPageSize = 100;
+		private const string DefaultRegion = "Europe";
 
 		private readonly AppDbContext _db;
 
 		public TransactionsService(AppDbContext db)
 		{
 			_db = db;
+		}
+
+		public Task<TransactionHistoryViewModel> GetHistoryForRequest(
+			string userId,
+			string? region,
+			int page,
+			int pageSize)
+		{
+			int normalizedPage =
+				Math.Max(1, page);
+
+			int normalizedPageSize =
+				Math.Clamp(
+					pageSize,
+					1,
+					MaximumPageSize);
+
+			string normalizedRegion =
+				string.IsNullOrWhiteSpace(region)
+					? DefaultRegion
+					: region.Trim();
+
+			return GetHistory(
+				userId,
+				normalizedRegion,
+				normalizedPage,
+				normalizedPageSize);
 		}
 
 		public async Task<TransactionHistoryViewModel> GetHistory(
@@ -150,7 +178,7 @@ namespace PaladinHubV2.Server.Domain.Services.Transactions
 		{
 			if (string.IsNullOrWhiteSpace(region))
 			{
-				return "Europe";
+				return DefaultRegion;
 			}
 
 			return region.Trim().ToUpperInvariant() switch

@@ -1,9 +1,9 @@
 using System;
-using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PaladinHub.Models.Talents;
+using PaladinHubV2.Server.Domain.Services.Common;
 using PaladinHubV2.Server.Domain.Services.TalentTrees;
 
 namespace PaladinHubV2.Server.API.Controllers.Content.Talents
@@ -13,9 +13,9 @@ namespace PaladinHubV2.Server.API.Controllers.Content.Talents
 	[Route("api/talents")]
 	public sealed class TalentsApiController : ControllerBase
 	{
-		private readonly ITalentTreeService _trees;
+		private readonly ITalentTreeAdminService _trees;
 
-		public TalentsApiController(ITalentTreeService trees)
+		public TalentsApiController(ITalentTreeAdminService trees)
 		{
 			_trees = trees;
 		}
@@ -25,7 +25,7 @@ namespace PaladinHubV2.Server.API.Controllers.Content.Talents
 			[FromRoute] string key,
 			[FromBody] SaveTreeRequest? request)
 		{
-			var normalizedKey = key?.Trim();
+			string? normalizedKey = key?.Trim();
 
 			if (string.IsNullOrWhiteSpace(normalizedKey))
 			{
@@ -43,7 +43,7 @@ namespace PaladinHubV2.Server.API.Controllers.Content.Talents
 				});
 			}
 
-			var requestKey = request.Key?.Trim();
+			string? requestKey = request.Key?.Trim();
 
 			if (!string.Equals(
 					normalizedKey,
@@ -53,56 +53,18 @@ namespace PaladinHubV2.Server.API.Controllers.Content.Talents
 				return BadRequest(new
 				{
 					message =
-							"The route key does not match the request key."
+						"The route key does not match the request key."
 				});
 			}
 
-			if (request.Nodes == null)
-			{
-				return BadRequest(new
-				{
-					message = "Talent nodes are required."
-				});
-			}
+			OperationResult result =
+				await _trees.SaveActiveStatesAsync(
+					normalizedKey,
+					request.Nodes);
 
-			if (request.Nodes.Any(node =>
-					node == null ||
-					string.IsNullOrWhiteSpace(node.Id)))
-			{
-				return BadRequest(new
-				{
-					message =
-							"Every talent node must contain a valid ID."
-				});
-			}
-
-			var normalizedNodes = request.Nodes
-				.Select(node => new NodeState(
-					node.Id.Trim(),
-					node.Active))
-				.ToList();
-
-			var duplicateNodeId = normalizedNodes
-				.GroupBy(
-					node => node.Id,
-					StringComparer.OrdinalIgnoreCase)
-				.FirstOrDefault(group => group.Count() > 1)
-				?.Key;
-
-			if (duplicateNodeId != null)
-			{
-				return BadRequest(new
-				{
-					message =
-							$"Duplicate talent node ID: {duplicateNodeId}."
-				});
-			}
-
-			await _trees.SaveActiveStatesAsync(
-				normalizedKey,
-				normalizedNodes);
-
-			return NoContent();
+			return result.Ok
+				? NoContent()
+				: BadRequest(new { message = result.Message });
 		}
 	}
 }
