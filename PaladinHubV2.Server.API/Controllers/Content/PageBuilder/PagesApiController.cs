@@ -1,6 +1,7 @@
 using System;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using PaladinHub.Models.PageBuilder;
 using PaladinHubV2.Server.Domain.Services.PageBuilder;
 
 namespace PaladinHubV2.Server.API.Controllers.Content.PageBuilder
@@ -17,18 +18,11 @@ namespace PaladinHubV2.Server.API.Controllers.Content.PageBuilder
 			_pages = pages;
 		}
 
-		public sealed class PutLayoutRequest
-		{
-			public string? JsonLayout { get; init; }
-
-			public string? RowVersionBase64 { get; init; }
-		}
-
 		[HttpPut("{id:int}/layout")]
 		[ValidateAntiForgeryToken]
 		public async Task<IActionResult> PutLayout(
 			[FromRoute] int id,
-			[FromBody] PutLayoutRequest request)
+			[FromBody] PutPageLayoutRequest? request)
 		{
 			if (id <= 0)
 			{
@@ -47,34 +41,13 @@ namespace PaladinHubV2.Server.API.Controllers.Content.PageBuilder
 				});
 			}
 
-			if (string.IsNullOrWhiteSpace(request.RowVersionBase64))
+			if (!TryDecodeRowVersion(
+					request.RowVersionBase64,
+					out byte[] rowVersion))
 			{
 				return BadRequest(new
 				{
-					message = "RowVersionBase64 is required."
-				});
-			}
-
-			byte[] rowVersion;
-
-			try
-			{
-				rowVersion = Convert.FromBase64String(
-					request.RowVersionBase64.Trim());
-			}
-			catch (FormatException)
-			{
-				return BadRequest(new
-				{
-					message = "RowVersionBase64 is invalid."
-				});
-			}
-
-			if (rowVersion.Length == 0)
-			{
-				return BadRequest(new
-				{
-					message = "RowVersionBase64 cannot be empty."
+					message = "RowVersionBase64 is invalid or empty."
 				});
 			}
 
@@ -90,9 +63,8 @@ namespace PaladinHubV2.Server.API.Controllers.Content.PageBuilder
 
 			try
 			{
-				var updatedBy =
-					User.Identity?.Name ??
-					"admin";
+				string updatedBy =
+					User.Identity?.Name ?? "admin";
 
 				var (updated, newRowVersion) =
 					await _pages.UpdateLayoutSafeAsync(
@@ -106,7 +78,7 @@ namespace PaladinHubV2.Server.API.Controllers.Content.PageBuilder
 					return Conflict(new
 					{
 						message =
-								"The page was modified by someone else. Refresh and try again."
+							"The page was modified by someone else. Refresh and try again."
 					});
 				}
 
@@ -114,7 +86,7 @@ namespace PaladinHubV2.Server.API.Controllers.Content.PageBuilder
 				{
 					id,
 					rowVersionBase64 =
-							Convert.ToBase64String(newRowVersion)
+						Convert.ToBase64String(newRowVersion)
 				});
 			}
 			catch (JsonLayoutValidationException exception)
@@ -156,10 +128,32 @@ namespace PaladinHubV2.Server.API.Controllers.Content.PageBuilder
 			{
 				id = page.Id,
 				rowVersionBase64 =
-						Convert.ToBase64String(
-							page.RowVersion ?? Array.Empty<byte>()),
+					Convert.ToBase64String(
+						page.RowVersion ?? Array.Empty<byte>()),
 				updatedAt = page.UpdatedAt
 			});
+		}
+
+		private static bool TryDecodeRowVersion(
+			string? value,
+			out byte[] rowVersion)
+		{
+			rowVersion = Array.Empty<byte>();
+
+			if (string.IsNullOrWhiteSpace(value))
+			{
+				return false;
+			}
+
+			try
+			{
+				rowVersion = Convert.FromBase64String(value.Trim());
+				return rowVersion.Length > 0;
+			}
+			catch (FormatException)
+			{
+				return false;
+			}
 		}
 	}
 }
