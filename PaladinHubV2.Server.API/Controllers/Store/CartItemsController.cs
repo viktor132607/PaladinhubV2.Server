@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using PaladinHub.Models.Carts;
 using PaladinHubV2.Server.Data.Entities;
 using PaladinHubV2.Server.Domain.Services.Carts;
 
@@ -58,50 +59,41 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 
 		[AllowAnonymous]
 		[HttpPost("Increase")]
-		public async Task<IActionResult> Increase(
+		public Task<IActionResult> Increase(
 			[FromQuery] string id,
 			CancellationToken cancellationToken)
 		{
-			User? user = await CurrentUserAsync();
-			CartDeltaResult result = await _cart.IncreaseAsync(
+			return ExecuteDeltaAsync(
 				id,
-				OwnerKey(),
-				user,
+				(productId, ownerKey, user, ct) =>
+					_cart.IncreaseAsync(productId, ownerKey, user, ct),
 				cancellationToken);
-
-			return DeltaResponse(result);
 		}
 
 		[AllowAnonymous]
 		[HttpPost("Decrease")]
-		public async Task<IActionResult> Decrease(
+		public Task<IActionResult> Decrease(
 			[FromQuery] string id,
 			CancellationToken cancellationToken)
 		{
-			User? user = await CurrentUserAsync();
-			CartDeltaResult result = await _cart.DecreaseAsync(
+			return ExecuteDeltaAsync(
 				id,
-				OwnerKey(),
-				user,
+				(productId, ownerKey, user, ct) =>
+					_cart.DecreaseAsync(productId, ownerKey, user, ct),
 				cancellationToken);
-
-			return DeltaResponse(result);
 		}
 
 		[AllowAnonymous]
 		[HttpPost("RemoveProduct")]
-		public async Task<IActionResult> RemoveProduct(
+		public Task<IActionResult> RemoveProduct(
 			[FromQuery] string id,
 			CancellationToken cancellationToken)
 		{
-			User? user = await CurrentUserAsync();
-			CartDeltaResult result = await _cart.RemoveAsync(
+			return ExecuteDeltaAsync(
 				id,
-				OwnerKey(),
-				user,
+				(productId, ownerKey, user, ct) =>
+					_cart.RemoveAsync(productId, ownerKey, user, ct),
 				cancellationToken);
-
-			return DeltaResponse(result);
 		}
 
 		[HttpPost("Cancel")]
@@ -159,6 +151,26 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 			});
 		}
 
+		private async Task<IActionResult> ExecuteDeltaAsync(
+			string? productId,
+			Func<
+				string?,
+				string,
+				User?,
+				CancellationToken,
+				Task<CartDeltaResult>> operation,
+			CancellationToken cancellationToken)
+		{
+			User? user = await CurrentUserAsync();
+			CartDeltaResult result = await operation(
+				productId,
+				OwnerKey(),
+				user,
+				cancellationToken);
+
+			return DeltaResponse(result);
+		}
+
 		private IActionResult DeltaResponse(CartDeltaResult result)
 		{
 			if (!result.Succeeded)
@@ -209,12 +221,6 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 				ok = false,
 				message
 			});
-		}
-
-		public sealed class AddCartItemRequest
-		{
-			public string ProductId { get; init; } = string.Empty;
-			public int Quantity { get; init; } = 1;
 		}
 	}
 }

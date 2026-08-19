@@ -10,6 +10,7 @@ namespace PaladinHubV2.Server.Domain.Services.Products
 			CancellationToken cancellationToken = default);
 
 		Task<bool> DeleteAsync(
+			string productId,
 			int reviewId,
 			string userId,
 			bool isAdmin,

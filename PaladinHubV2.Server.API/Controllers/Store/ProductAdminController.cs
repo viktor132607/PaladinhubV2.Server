@@ -116,10 +116,7 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 		{
 			if (model == null)
 			{
-				return BadRequest(new
-				{
-					message = "Product data is required."
-				});
+				return ProductDataRequired();
 			}
 
 			_admin.Normalize(model);
@@ -158,10 +155,7 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 		{
 			if (string.IsNullOrWhiteSpace(id))
 			{
-				return BadRequest(new
-				{
-					message = "Product ID is required."
-				});
+				return ProductIdRequired();
 			}
 
 			var model =
@@ -170,10 +164,7 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 					cancellationToken);
 
 			return model == null
-				? NotFound(new
-				{
-					message = "Product not found."
-				})
+				? ProductNotFound()
 				: Ok(model);
 		}
 
@@ -183,18 +174,12 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 		{
 			if (model == null)
 			{
-				return BadRequest(new
-				{
-					message = "Product data is required."
-				});
+				return ProductDataRequired();
 			}
 
 			if (string.IsNullOrWhiteSpace(model.Id))
 			{
-				return BadRequest(new
-				{
-					message = "Product ID is required."
-				});
+				return ProductIdRequired();
 			}
 
 			_admin.Normalize(model);
@@ -230,20 +215,38 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 		{
 			if (string.IsNullOrWhiteSpace(id))
 			{
-				return BadRequest(new
-				{
-					message = "Product ID is required."
-				});
+				return ProductIdRequired();
 			}
 
 			bool deleted = await _admin.DeleteAsync(id.Trim());
 
 			return deleted
 				? NoContent()
-				: NotFound(new
-				{
-					message = "Product not found."
-				});
+				: ProductNotFound();
+		}
+
+		private IActionResult ProductDataRequired()
+		{
+			return BadRequest(new
+			{
+				message = "Product data is required."
+			});
+		}
+
+		private IActionResult ProductIdRequired()
+		{
+			return BadRequest(new
+			{
+				message = "Product ID is required."
+			});
+		}
+
+		private IActionResult ProductNotFound()
+		{
+			return NotFound(new
+			{
+				message = "Product not found."
+			});
 		}
 	}
 }

@@ -8,6 +8,7 @@ namespace PaladinHubV2.Server.API.Controllers.Accounts
 {
 	[ApiController]
 	[Authorize]
+	[Route("api/account")]
 	[Route("Account")]
 	public sealed class PaymentMethodsController : ControllerBase
 	{
@@ -25,23 +26,20 @@ namespace PaladinHubV2.Server.API.Controllers.Accounts
 		[HttpGet("PaymentMethods")]
 		public async Task<IActionResult> PaymentMethods()
 		{
-			var user = await GetCurrentUser();
+			User? user = await GetCurrentUser();
 
 			if (user == null)
 			{
-				return Unauthorized(new
-				{
-					message = "Authentication required."
-				});
+				return AuthenticationRequired();
 			}
 
-			var regionCode =
+			string regionCode =
 				_ui.ReadRegionCookie() ?? "EU";
 
-			var currency =
+			string currency =
 				_ui.GetCurrencyForRegion(regionCode);
 
-			var balance =
+			decimal balance =
 				await _ui.GetBalance(user.Id);
 
 			var methods =
@@ -70,17 +68,14 @@ namespace PaladinHubV2.Server.API.Controllers.Accounts
 		[HttpGet("AddPaymentMethod")]
 		public async Task<IActionResult> AddPaymentMethod()
 		{
-			var user = await GetCurrentUser();
+			User? user = await GetCurrentUser();
 
 			if (user == null)
 			{
-				return Unauthorized(new
-				{
-					message = "Authentication required."
-				});
+				return AuthenticationRequired();
 			}
 
-			var publishableKey =
+			string publishableKey =
 				_paymentMethods.GetStripePublishableKey();
 
 			if (string.IsNullOrWhiteSpace(publishableKey))
@@ -94,7 +89,7 @@ namespace PaladinHubV2.Server.API.Controllers.Accounts
 					});
 			}
 
-			var customerId =
+			string customerId =
 				await _paymentMethods.EnsureStripeCustomer(user);
 
 			return Ok(new
@@ -117,14 +112,11 @@ namespace PaladinHubV2.Server.API.Controllers.Accounts
 				});
 			}
 
-			var user = await GetCurrentUser();
+			User? user = await GetCurrentUser();
 
 			if (user == null)
 			{
-				return Unauthorized(new
-				{
-					message = "Authentication required."
-				});
+				return AuthenticationRequired();
 			}
 
 			await _paymentMethods.AddStripePaymentMethod(
@@ -139,84 +131,22 @@ namespace PaladinHubV2.Server.API.Controllers.Accounts
 		}
 
 		[HttpGet("RemovePaymentMethod")]
-		public async Task<IActionResult> RemovePaymentMethod(
+		public Task<IActionResult> RemovePaymentMethod(
 			[FromQuery] string id)
 		{
-			if (string.IsNullOrWhiteSpace(id))
-			{
-				return BadRequest(new
-				{
-					message = "Payment method ID is required."
-				});
-			}
-
-			var user = await GetCurrentUser();
-
-			if (user == null)
-			{
-				return Unauthorized(new
-				{
-					message = "Authentication required."
-				});
-			}
-
-			var removed =
-				await _paymentMethods.RemovePaymentMethod(
-					user,
-					id.Trim());
-
-			if (!removed)
-			{
-				return NotFound(new
-				{
-					message = "Payment method not found."
-				});
-			}
-
-			return Ok(new
-			{
-				ok = true,
-				message = "Payment method removed."
-			});
+			return RemovePaymentMethodCore(
+				id,
+				legacyResponse: true);
 		}
 
 		[HttpDelete("PaymentMethods/{id}")]
 		[ValidateAntiForgeryToken]
-		public async Task<IActionResult> RemovePaymentMethodApi(
+		public Task<IActionResult> RemovePaymentMethodApi(
 			[FromRoute] string id)
 		{
-			if (string.IsNullOrWhiteSpace(id))
-			{
-				return BadRequest(new
-				{
-					message = "Payment method ID is required."
-				});
-			}
-
-			var user = await GetCurrentUser();
-
-			if (user == null)
-			{
-				return Unauthorized(new
-				{
-					message = "Authentication required."
-				});
-			}
-
-			var removed =
-				await _paymentMethods.RemovePaymentMethod(
-					user,
-					id.Trim());
-
-			if (!removed)
-			{
-				return NotFound(new
-				{
-					message = "Payment method not found."
-				});
-			}
-
-			return NoContent();
+			return RemovePaymentMethodCore(
+				id,
+				legacyResponse: false);
 		}
 
 		[HttpPost("SetDefaultPaymentMethod")]
@@ -226,33 +156,24 @@ namespace PaladinHubV2.Server.API.Controllers.Accounts
 		{
 			if (string.IsNullOrWhiteSpace(id))
 			{
-				return BadRequest(new
-				{
-					message = "Payment method ID is required."
-				});
+				return PaymentMethodIdRequired();
 			}
 
-			var user = await GetCurrentUser();
+			User? user = await GetCurrentUser();
 
 			if (user == null)
 			{
-				return Unauthorized(new
-				{
-					message = "Authentication required."
-				});
+				return AuthenticationRequired();
 			}
 
-			var updated =
+			bool updated =
 				await _paymentMethods.SetDefaultPaymentMethod(
 					user,
 					id.Trim());
 
 			if (!updated)
 			{
-				return NotFound(new
-				{
-					message = "Payment method not found."
-				});
+				return PaymentMethodNotFound();
 			}
 
 			return Ok(new
@@ -262,9 +183,68 @@ namespace PaladinHubV2.Server.API.Controllers.Accounts
 			});
 		}
 
+		private async Task<IActionResult> RemovePaymentMethodCore(
+			string? id,
+			bool legacyResponse)
+		{
+			if (string.IsNullOrWhiteSpace(id))
+			{
+				return PaymentMethodIdRequired();
+			}
+
+			User? user = await GetCurrentUser();
+
+			if (user == null)
+			{
+				return AuthenticationRequired();
+			}
+
+			bool removed =
+				await _paymentMethods.RemovePaymentMethod(
+					user,
+					id.Trim());
+
+			if (!removed)
+			{
+				return PaymentMethodNotFound();
+			}
+
+			return legacyResponse
+				? Ok(new
+				{
+					ok = true,
+					message = "Payment method removed."
+				})
+				: NoContent();
+		}
+
 		private Task<User?> GetCurrentUser()
 		{
 			return _ui.GetMe(User);
+		}
+
+		private IActionResult AuthenticationRequired()
+		{
+			return Unauthorized(new
+			{
+				message = "Authentication required."
+			});
+		}
+
+		private IActionResult PaymentMethodIdRequired()
+		{
+			return BadRequest(new
+			{
+				message = "Payment method ID is required."
+			});
+		}
+
+		private IActionResult PaymentMethodNotFound()
+		{
+			return NotFound(new
+			{
+				message = "Payment method not found."
+			});
 		}
 	}
 }

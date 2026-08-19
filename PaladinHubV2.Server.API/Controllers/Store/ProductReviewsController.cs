@@ -82,8 +82,7 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 			AddReviewInput? input,
 			CancellationToken cancellationToken)
 		{
-			string? userId =
-				User.FindFirstValue(ClaimTypes.NameIdentifier);
+			string? userId = CurrentUserId();
 
 			if (string.IsNullOrWhiteSpace(userId))
 			{
@@ -136,16 +135,21 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 			string? productId,
 			CancellationToken cancellationToken)
 		{
-			_ = productId;
-
-			string? userId =
-				User.FindFirstValue(ClaimTypes.NameIdentifier);
+			string? userId = CurrentUserId();
 
 			if (string.IsNullOrWhiteSpace(userId))
 			{
 				return Unauthorized(new
 				{
 					message = "Authentication required."
+				});
+			}
+
+			if (string.IsNullOrWhiteSpace(productId))
+			{
+				return BadRequest(new
+				{
+					message = "Product ID is required."
 				});
 			}
 
@@ -159,6 +163,7 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 
 			bool deleted =
 				await _reviews.DeleteAsync(
+					productId.Trim(),
 					reviewId,
 					userId,
 					User.IsInRole("Admin"),
@@ -171,11 +176,16 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 					new
 					{
 						message =
-							"Review not found or you are not allowed to delete it."
+							"Review not found, does not belong to this product, or you are not allowed to delete it."
 					});
 			}
 
 			return NoContent();
+		}
+
+		private string? CurrentUserId()
+		{
+			return User.FindFirstValue(ClaimTypes.NameIdentifier);
 		}
 	}
 }

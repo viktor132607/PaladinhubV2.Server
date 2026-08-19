@@ -24,13 +24,27 @@ namespace PaladinHubV2.Server.Domain.Services.Products
 				cancellationToken);
 		}
 
-		public Task<bool> DeleteAsync(
+		public async Task<bool> DeleteAsync(
+			string productId,
 			int reviewId,
 			string userId,
 			bool isAdmin,
 			CancellationToken cancellationToken = default)
 		{
-			return _products.DeleteReviewAsync(
+			ProductDetailsViewModel? product =
+				await _products.GetDetailsAsync(
+					productId,
+					userId,
+					isAdmin,
+					cancellationToken);
+
+			if (product == null ||
+				!product.Reviews.Any(review => review.Id == reviewId))
+			{
+				return false;
+			}
+
+			return await _products.DeleteReviewAsync(
 				reviewId,
 				userId,
 				isAdmin,

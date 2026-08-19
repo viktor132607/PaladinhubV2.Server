@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PaladinHub.Models.Products;
@@ -24,22 +23,15 @@ namespace PaladinHubV2.Server.API.Controllers.General
 		[HttpGet("~/Home/Home")]
 		public IActionResult Home()
 		{
-			return Ok(new
-			{
-				page = "home",
-				frontendRoute = "/Home/Home"
-			});
+			return PageMetadata("home", "/Home/Home");
 		}
 
 		[AllowAnonymous]
 		[HttpGet("merchandise")]
 		[HttpGet("~/Home/Merchandise")]
-		public async Task<IActionResult> Merchandise()
+		public Task<IActionResult> Merchandise()
 		{
-			ICollection<ProductViewModel> products =
-				await _productService.GetAll();
-
-			return Ok(products);
+			return ProductsResponseAsync();
 		}
 
 		[Authorize]
@@ -57,12 +49,9 @@ namespace PaladinHubV2.Server.API.Controllers.General
 		[Authorize]
 		[HttpGet("logged-in-products")]
 		[HttpGet("~/Home/IndexLoggedIn")]
-		public async Task<IActionResult> IndexLoggedIn()
+		public Task<IActionResult> IndexLoggedIn()
 		{
-			ICollection<ProductViewModel> products =
-				await _productService.GetAll();
-
-			return Ok(products);
+			return ProductsResponseAsync();
 		}
 
 		[AllowAnonymous]
@@ -70,11 +59,7 @@ namespace PaladinHubV2.Server.API.Controllers.General
 		[HttpGet("~/Home/Privacy")]
 		public IActionResult Privacy()
 		{
-			return Ok(new
-			{
-				page = "privacy",
-				frontendRoute = "/Home/Privacy"
-			});
+			return PageMetadata("privacy", "/Home/Privacy");
 		}
 
 		[AllowAnonymous]
@@ -106,6 +91,25 @@ namespace PaladinHubV2.Server.API.Controllers.General
 				{
 					["requestId"] = HttpContext.TraceIdentifier
 				});
+		}
+
+		private async Task<IActionResult> ProductsResponseAsync()
+		{
+			ICollection<ProductViewModel> products =
+				await _productService.GetAll();
+
+			return Ok(products);
+		}
+
+		private IActionResult PageMetadata(
+			string page,
+			string frontendRoute)
+		{
+			return Ok(new
+			{
+				page,
+				frontendRoute
+			});
 		}
 	}
 }
