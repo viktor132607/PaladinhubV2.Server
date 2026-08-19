@@ -275,6 +275,39 @@ Admin/reporting endpoints that operate on archived carts belong in a separate Ad
 
 ---
 
+## Source-of-truth example 5: Merchandise
+
+The original `MerchandiseController` mixed HTTP routing with query normalization, EF Core filtering, price-band construction, review aggregation, rating-facet calculation, pagination and page-model composition.
+
+### Controller
+
+- `MerchandiseController`
+  - `GET /api/merchandise`
+  - `GET /api/merchandise/List`
+  - legacy `/Merchandise` route base remains compatible
+  - delegates both endpoints to one service call and only maps the result to HTTP `200 OK`
+
+### Service
+
+- `IMerchandiseService` / `MerchandiseService`
+  - normalizes `ProductQueryOptions`
+  - search/category/price-range filtering
+  - review aggregation
+  - sorting and pagination
+  - thumbnail projection
+  - merchandise page-model composition
+  - rating-band facet counts
+
+### Merchandise-specific rules learned
+
+The rating filter is intentionally **banded**, matching V1 behavior; it is not a generic `>= N` threshold. `MinRating=4` means average rating `4.00–4.49`, `MinRating=3` means `3.00–3.49`, and so on. `MinRating=5` remains the V1 perfect-rating band (`5.00`).
+
+`RatingAtLeast` is a legacy property name kept for contract compatibility. Its values are the same V1 rating-band counts rather than cumulative `>=` counts.
+
+Controller refactors must preserve established V1 business semantics unless a behavior change is explicitly requested. Moving logic into a service is not permission to reinterpret filters or business rules.
+
+---
+
 ## Pattern for the next large controller
 
 When asked to "refactor this controller like Checkout" or "do the same as Account":

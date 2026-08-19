@@ -64,6 +64,10 @@ builder.Services.AddScoped<
 	IProductReviewService,
 	ProductReviewService>();
 
+builder.Services.AddScoped<
+	IMerchandiseService,
+	MerchandiseService>();
+
 ConfigureHttpPort(builder);
 
 WebApplication app = builder.Build();
