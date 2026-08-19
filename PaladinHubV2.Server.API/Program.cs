@@ -12,9 +12,18 @@ using PaladinHubV2.Server.API.ServiceExtensions;
 using PaladinHubV2.Server.Data;
 using PaladinHubV2.Server.Data.Seed;
 using PaladinHubV2.Server.Data.Seed.Contracts;
+using PaladinHubV2.Server.Domain.Services.Accounts;
+using PaladinHubV2.Server.Domain.Services.Auth;
 using PaladinHubV2.Server.Domain.Services.Carts;
 using PaladinHubV2.Server.Domain.Services.Checkout;
+using PaladinHubV2.Server.Domain.Services.GameData;
+using PaladinHubV2.Server.Domain.Services.ItemsService;
+using PaladinHubV2.Server.Domain.Services.PageBuilder;
+using PaladinHubV2.Server.Domain.Services.Paladin;
 using PaladinHubV2.Server.Domain.Services.Products;
+using PaladinHubV2.Server.Domain.Services.Promos;
+using PaladinHubV2.Server.Domain.Services.SpellbookService;
+using PaladinHubV2.Server.Domain.Services.TalentTrees;
 
 LoadEnvironmentFile();
 
@@ -36,37 +45,24 @@ builder.Services.AddPaladinHubApp(
 	builder.Configuration,
 	builder.Environment);
 
-builder.Services.AddScoped<
-	ICartApplicationService,
-	CartApplicationService>();
+builder.Services.AddScoped<ICartApplicationService, CartApplicationService>();
+builder.Services.AddScoped<ICheckoutStateService, CheckoutStateService>();
+builder.Services.AddScoped<ICheckoutOrderService, CheckoutOrderService>();
+builder.Services.AddScoped<ICheckoutPaymentService, CheckoutPaymentService>();
+builder.Services.AddScoped<ICheckoutService, CheckoutService>();
+builder.Services.AddScoped<IProductAdminService, ProductAdminService>();
+builder.Services.AddScoped<IProductReviewService, ProductReviewService>();
+builder.Services.AddScoped<IMerchandiseService, MerchandiseService>();
 
-builder.Services.AddScoped<
-	ICheckoutStateService,
-	CheckoutStateService>();
-
-builder.Services.AddScoped<
-	ICheckoutOrderService,
-	CheckoutOrderService>();
-
-builder.Services.AddScoped<
-	ICheckoutPaymentService,
-	CheckoutPaymentService>();
-
-builder.Services.AddScoped<
-	ICheckoutService,
-	CheckoutService>();
-
-builder.Services.AddScoped<
-	IProductAdminService,
-	ProductAdminService>();
-
-builder.Services.AddScoped<
-	IProductReviewService,
-	ProductReviewService>();
-
-builder.Services.AddScoped<
-	IMerchandiseService,
-	MerchandiseService>();
+builder.Services.AddScoped<IItemAdminService, ItemAdminService>();
+builder.Services.AddScoped<ISpellAdminService, SpellAdminService>();
+builder.Services.AddScoped<IAdminDatabaseService, AdminDatabaseService>();
+builder.Services.AddScoped<IPageBuilderAdminService, PageBuilderAdminService>();
+builder.Services.AddScoped<ITalentsPageService, TalentsPageService>();
+builder.Services.AddScoped<IPaladinPageService, PaladinPageService>();
+builder.Services.AddScoped<IPromoCodeAdminService, PromoCodeAdminService>();
+builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IAccountSecurityApplicationService, AccountSecurityApplicationService>();
 
 ConfigureHttpPort(builder);
 
@@ -141,16 +137,11 @@ app.UseStatusCodePages(
 	});
 
 app.UseStaticFiles();
-
 app.UseRouting();
-
 app.UseCors("PaladinHubClient");
-
 app.UseSession();
-
 app.UseAuthentication();
 app.UseAuthorization();
-
 app.MapControllers();
 
 app.MapControllerRoute(
@@ -173,68 +164,52 @@ app.MapGet(
 		{
 			bool canConnect =
 				await database.Database
-					.CanConnectAsync(
-						cancellationToken);
+					.CanConnectAsync(cancellationToken);
 
 			if (!canConnect)
 			{
 				return Results.Problem(
-					title:
-						"Database connection failed",
-					statusCode:
-						StatusCodes
-							.Status503ServiceUnavailable);
+					title: "Database connection failed",
+					statusCode: StatusCodes.Status503ServiceUnavailable);
 			}
 
-			return Results.Ok(
-				new
-				{
-					status = "ok",
-					service =
-						"PaladinHubV2.Server.API",
-					database = "connected",
-					utc = DateTime.UtcNow
-				});
+			return Results.Ok(new
+			{
+				status = "ok",
+				service = "PaladinHubV2.Server.API",
+				database = "connected",
+				utc = DateTime.UtcNow
+			});
 		}
 		catch (Exception exception)
 		{
 			ILogger logger =
 				app.Services
 					.GetRequiredService<ILoggerFactory>()
-					.CreateLogger(
-						"HealthCheck");
+					.CreateLogger("HealthCheck");
 
-			logger.LogWarning(
-				exception,
-				"Database health check failed.");
+			logger.LogWarning(exception, "Database health check failed.");
 
 			return Results.Problem(
-				title:
-					"Database connection failed",
-				statusCode:
-					StatusCodes
-						.Status503ServiceUnavailable);
+				title: "Database connection failed",
+				statusCode: StatusCodes.Status503ServiceUnavailable);
 		}
 	})
 	.AllowAnonymous();
 
 app.MapGet(
 	"/",
-	() =>
-		Results.Ok(
-			new
-			{
-				service =
-					"PaladinHubV2.Server.API",
-				status = "running",
-				health = "/health"
-			}))
+	() => Results.Ok(new
+	{
+		service = "PaladinHubV2.Server.API",
+		status = "running",
+		health = "/health"
+	}))
 	.AllowAnonymous();
 
 bool initializeDatabase =
 	string.Equals(
-		app.Configuration[
-			"APPLY_MIGRATIONS_ON_STARTUP"],
+		app.Configuration["APPLY_MIGRATIONS_ON_STARTUP"],
 		"true",
 		StringComparison.OrdinalIgnoreCase);
 
@@ -247,26 +222,15 @@ await app.RunAsync();
 
 static void LoadEnvironmentFile()
 {
-	string currentDirectory =
-		Directory.GetCurrentDirectory();
+	string currentDirectory = Directory.GetCurrentDirectory();
 
 	string[] environmentFileCandidates =
 	[
-		Path.Combine(
-			currentDirectory,
-			".env"),
-
-		Path.GetFullPath(
-			Path.Combine(
-				currentDirectory,
-				"..",
-				".env"))
+		Path.Combine(currentDirectory, ".env"),
+		Path.GetFullPath(Path.Combine(currentDirectory, "..", ".env"))
 	];
 
-	foreach (
-		string environmentFile in
-		environmentFileCandidates.Distinct(
-			StringComparer.OrdinalIgnoreCase))
+	foreach (string environmentFile in environmentFileCandidates.Distinct(StringComparer.OrdinalIgnoreCase))
 	{
 		if (!File.Exists(environmentFile))
 		{
@@ -278,22 +242,16 @@ static void LoadEnvironmentFile()
 	}
 }
 
-static void ConfigureHttpPort(
-	WebApplicationBuilder builder)
+static void ConfigureHttpPort(WebApplicationBuilder builder)
 {
-	string? configuredPort =
-		builder.Configuration["PORT"];
+	string? configuredPort = builder.Configuration["PORT"];
 
-	if (string.IsNullOrWhiteSpace(
-			configuredPort))
+	if (string.IsNullOrWhiteSpace(configuredPort))
 	{
 		return;
 	}
 
-	if (!int.TryParse(
-			configuredPort,
-			out int httpPort) ||
-		httpPort is < 1 or > 65535)
+	if (!int.TryParse(configuredPort, out int httpPort) || httpPort is < 1 or > 65535)
 	{
 		throw new InvalidOperationException(
 			"PORT must be a valid integer " +
@@ -301,49 +259,32 @@ static void ConfigureHttpPort(
 			$"Current value: '{configuredPort}'.");
 	}
 
-	string? aspNetCoreUrls =
-		builder.Configuration[
-			"ASPNETCORE_URLS"];
+	string? aspNetCoreUrls = builder.Configuration["ASPNETCORE_URLS"];
+	string? dotnetUrls = builder.Configuration["DOTNET_URLS"];
 
-	string? dotnetUrls =
-		builder.Configuration[
-			"DOTNET_URLS"];
-
-	if (
-		!string.IsNullOrWhiteSpace(
-			aspNetCoreUrls) ||
-		!string.IsNullOrWhiteSpace(
-			dotnetUrls))
+	if (!string.IsNullOrWhiteSpace(aspNetCoreUrls) || !string.IsNullOrWhiteSpace(dotnetUrls))
 	{
 		return;
 	}
 
-	builder.WebHost.UseUrls(
-		$"http://0.0.0.0:{httpPort}");
+	builder.WebHost.UseUrls($"http://0.0.0.0:{httpPort}");
 }
 
-static async Task InitializeDatabaseAsync(
-	WebApplication application)
+static async Task InitializeDatabaseAsync(WebApplication application)
 {
 	ILogger logger =
 		application.Services
 			.GetRequiredService<ILoggerFactory>()
-			.CreateLogger(
-				"DatabaseInitialization");
+			.CreateLogger("DatabaseInitialization");
 
 	await using AsyncServiceScope scope =
-		application.Services
-			.CreateAsyncScope();
+		application.Services.CreateAsyncScope();
 
 	AppDbContext database =
-		scope.ServiceProvider
-			.GetRequiredService<AppDbContext>();
+		scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-	logger.LogInformation(
-		"Initializing application database.");
-
-	await database.Database
-		.EnsureCreatedAsync();
+	logger.LogInformation("Initializing application database.");
+	await database.Database.EnsureCreatedAsync();
 
 	IEnumerable<ISeeder> seeders =
 		scope.ServiceProvider
@@ -359,12 +300,10 @@ static async Task InitializeDatabaseAsync(
 		await seeder.SeedAsync();
 	}
 
-	logger.LogInformation(
-		"Application database initialization completed.");
+	logger.LogInformation("Application database initialization completed.");
 }
 
-static int GetSeederOrder(
-	ISeeder seeder)
+static int GetSeederOrder(ISeeder seeder)
 {
 	return seeder switch
 	{
@@ -377,42 +316,20 @@ static int GetSeederOrder(
 	};
 }
 
-static string GetStatusTitle(
-	int statusCode)
+static string GetStatusTitle(int statusCode)
 {
 	return statusCode switch
 	{
-		StatusCodes.Status400BadRequest =>
-			"Bad request",
-
-		StatusCodes.Status401Unauthorized =>
-			"Authentication required",
-
-		StatusCodes.Status403Forbidden =>
-			"Access denied",
-
-		StatusCodes.Status404NotFound =>
-			"Resource not found",
-
-		StatusCodes.Status405MethodNotAllowed =>
-			"Method not allowed",
-
-		StatusCodes.Status409Conflict =>
-			"Request conflict",
-
-		StatusCodes.Status415UnsupportedMediaType =>
-			"Unsupported media type",
-
-		StatusCodes.Status429TooManyRequests =>
-			"Too many requests",
-
-		StatusCodes.Status500InternalServerError =>
-			"Internal server error",
-
-		StatusCodes.Status503ServiceUnavailable =>
-			"Service unavailable",
-
-		_ =>
-			"Request failed"
+		StatusCodes.Status400BadRequest => "Bad request",
+		StatusCodes.Status401Unauthorized => "Authentication required",
+		StatusCodes.Status403Forbidden => "Access denied",
+		StatusCodes.Status404NotFound => "Resource not found",
+		StatusCodes.Status405MethodNotAllowed => "Method not allowed",
+		StatusCodes.Status409Conflict => "Request conflict",
+		StatusCodes.Status415UnsupportedMediaType => "Unsupported media type",
+		StatusCodes.Status429TooManyRequests => "Too many requests",
+		StatusCodes.Status500InternalServerError => "Internal server error",
+		StatusCodes.Status503ServiceUnavailable => "Service unavailable",
+		_ => "Request failed"
 	};
 }

@@ -1,10 +1,7 @@
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using PaladinHubV2.Server.Data;
 using PaladinHubV2.Server.Data.Entities;
+using PaladinHubV2.Server.Domain.Services.SpellbookService;
 
 namespace PaladinHubV2.Server.API.Controllers.GameData
 {
@@ -13,18 +10,15 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 	[Route("Admin/api/spells")]
 	public sealed class SpellsController : ControllerBase
 	{
-		private readonly AppDbContext _db;
+		private readonly ISpellAdminService _spells;
 
-		public SpellsController(AppDbContext db)
+		public SpellsController(ISpellAdminService spells)
 		{
-			_db = db;
+			_spells = spells;
 		}
 
 		[HttpGet("create")]
-		public IActionResult Create()
-		{
-			return Ok(new Spell());
-		}
+		public IActionResult Create() => Ok(new Spell());
 
 		[HttpPost]
 		[ValidateAntiForgeryToken]
@@ -34,10 +28,7 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 		{
 			if (spell == null)
 			{
-				return BadRequest(new
-				{
-					message = "Spell data is required."
-				});
+				return BadRequest(new { message = "Spell data is required." });
 			}
 
 			if (!ModelState.IsValid)
@@ -45,17 +36,8 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 				return ValidationProblem(ModelState);
 			}
 
-			spell.Id = 0;
-			NormalizeSpell(spell);
-
-			_db.Spells.Add(spell);
-
-			await _db.SaveChangesAsync(cancellationToken);
-
-			return CreatedAtAction(
-				nameof(Details),
-				new { id = spell.Id },
-				spell);
+			Spell created = await _spells.CreateAsync(spell, cancellationToken);
+			return CreatedAtAction(nameof(Details), new { id = created.Id }, created);
 		}
 
 		[HttpGet("{id:int}/edit")]
@@ -75,26 +57,19 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 		{
 			if (id <= 0)
 			{
-				return BadRequest(new
-				{
-					message = "Invalid spell ID."
-				});
+				return BadRequest(new { message = "Invalid spell ID." });
 			}
 
 			if (spell == null)
 			{
-				return BadRequest(new
-				{
-					message = "Spell data is required."
-				});
+				return BadRequest(new { message = "Spell data is required." });
 			}
 
 			if (id != spell.Id)
 			{
 				return BadRequest(new
 				{
-					message =
-							"The route ID does not match the spell ID."
+					message = "The route ID does not match the spell ID."
 				});
 			}
 
@@ -103,30 +78,14 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 				return ValidationProblem(ModelState);
 			}
 
-			var existing = await _db.Spells
-				.FirstOrDefaultAsync(
-					current => current.Id == id,
-					cancellationToken);
+			Spell? updated = await _spells.UpdateAsync(
+				id,
+				spell,
+				cancellationToken);
 
-			if (existing == null)
-			{
-				return NotFound(new
-				{
-					message = "Spell not found."
-				});
-			}
-
-			existing.Name = spell.Name;
-			existing.Icon = spell.Icon;
-			existing.Description = spell.Description;
-			existing.Url = spell.Url;
-			existing.Quality = spell.Quality;
-
-			NormalizeSpell(existing);
-
-			await _db.SaveChangesAsync(cancellationToken);
-
-			return Ok(existing);
+			return updated == null
+				? NotFound(new { message = "Spell not found." })
+				: Ok(updated);
 		}
 
 		[HttpGet("{id:int}")]
@@ -136,27 +95,13 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 		{
 			if (id <= 0)
 			{
-				return BadRequest(new
-				{
-					message = "Invalid spell ID."
-				});
+				return BadRequest(new { message = "Invalid spell ID." });
 			}
 
-			var spell = await _db.Spells
-				.AsNoTracking()
-				.FirstOrDefaultAsync(
-					current => current.Id == id,
-					cancellationToken);
-
-			if (spell == null)
-			{
-				return NotFound(new
-				{
-					message = "Spell not found."
-				});
-			}
-
-			return Ok(spell);
+			Spell? spell = await _spells.GetAsync(id, cancellationToken);
+			return spell == null
+				? NotFound(new { message = "Spell not found." })
+				: Ok(spell);
 		}
 
 		[HttpGet("{id:int}/delete")]
@@ -175,48 +120,13 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 		{
 			if (id <= 0)
 			{
-				return BadRequest(new
-				{
-					message = "Invalid spell ID."
-				});
+				return BadRequest(new { message = "Invalid spell ID." });
 			}
 
-			var spell = await _db.Spells
-				.FirstOrDefaultAsync(
-					current => current.Id == id,
-					cancellationToken);
-
-			if (spell == null)
-			{
-				return NotFound(new
-				{
-					message = "Spell not found."
-				});
-			}
-
-			_db.Spells.Remove(spell);
-
-			await _db.SaveChangesAsync(cancellationToken);
-
-			return NoContent();
-		}
-
-		private static void NormalizeSpell(Spell spell)
-		{
-			spell.Name = spell.Name.Trim();
-			spell.Icon = NormalizeOptional(spell.Icon);
-			spell.Description = NormalizeOptional(spell.Description);
-			spell.Url = NormalizeOptional(spell.Url);
-			spell.Quality = string.IsNullOrWhiteSpace(spell.Quality)
-				? "spell"
-				: spell.Quality.Trim().ToLowerInvariant();
-		}
-
-		private static string? NormalizeOptional(string? value)
-		{
-			return string.IsNullOrWhiteSpace(value)
-				? null
-				: value.Trim();
+			bool deleted = await _spells.DeleteAsync(id, cancellationToken);
+			return deleted
+				? NoContent()
+				: NotFound(new { message = "Spell not found." });
 		}
 	}
 }

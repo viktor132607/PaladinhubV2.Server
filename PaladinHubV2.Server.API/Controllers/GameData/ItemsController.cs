@@ -1,10 +1,7 @@
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using PaladinHubV2.Server.Data;
 using PaladinHubV2.Server.Data.Entities;
+using PaladinHubV2.Server.Domain.Services.ItemsService;
 
 namespace PaladinHubV2.Server.API.Controllers.GameData
 {
@@ -13,18 +10,15 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 	[Route("Admin/api/items")]
 	public sealed class ItemsController : ControllerBase
 	{
-		private readonly AppDbContext _db;
+		private readonly IItemAdminService _items;
 
-		public ItemsController(AppDbContext db)
+		public ItemsController(IItemAdminService items)
 		{
-			_db = db;
+			_items = items;
 		}
 
 		[HttpGet("create")]
-		public IActionResult Create()
-		{
-			return Ok(new Item());
-		}
+		public IActionResult Create() => Ok(new Item());
 
 		[HttpPost]
 		[ValidateAntiForgeryToken]
@@ -37,51 +31,20 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 				return ValidationProblem(ModelState);
 			}
 
-			item.Id = 0;
-			item.Name = item.Name.Trim();
-			item.Icon = NormalizeOptional(item.Icon);
-			item.SecondIcon = NormalizeOptional(item.SecondIcon);
-			item.Description = NormalizeOptional(item.Description);
-			item.Url = NormalizeOptional(item.Url);
-			item.Quality = NormalizeOptional(item.Quality);
-
-			_db.Items.Add(item);
-			await _db.SaveChangesAsync(cancellationToken);
+			Item created = await _items.CreateAsync(item, cancellationToken);
 
 			return CreatedAtAction(
 				nameof(Details),
-				new { id = item.Id },
-				item);
+				new { id = created.Id },
+				created);
 		}
 
 		[HttpGet("{id:int}/edit")]
-		public async Task<IActionResult> Edit(
+		public Task<IActionResult> Edit(
 			[FromRoute] int id,
 			CancellationToken cancellationToken)
 		{
-			if (id <= 0)
-			{
-				return BadRequest(new
-				{
-					message = "Invalid item ID."
-				});
-			}
-
-			var item = await _db.Items
-				.AsNoTracking()
-				.FirstOrDefaultAsync(
-					current => current.Id == id,
-					cancellationToken);
-
-			if (item == null)
-			{
-				return NotFound(new
-				{
-					message = "Item not found."
-				});
-			}
-
-			return Ok(item);
+			return GetItem(id, cancellationToken);
 		}
 
 		[HttpPut("{id:int}")]
@@ -104,91 +67,30 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 				return ValidationProblem(ModelState);
 			}
 
-			var existing = await _db.Items
-				.FirstOrDefaultAsync(
-					current => current.Id == id,
-					cancellationToken);
+			Item? updated = await _items.UpdateAsync(
+				id,
+				item,
+				cancellationToken);
 
-			if (existing == null)
-			{
-				return NotFound(new
-				{
-					message = "Item not found."
-				});
-			}
-
-			existing.Name = item.Name.Trim();
-			existing.Icon = NormalizeOptional(item.Icon);
-			existing.SecondIcon = NormalizeOptional(item.SecondIcon);
-			existing.Description = NormalizeOptional(item.Description);
-			existing.Url = NormalizeOptional(item.Url);
-			existing.ItemLevel = item.ItemLevel;
-			existing.RequiredLevel = item.RequiredLevel;
-			existing.Quality = NormalizeOptional(item.Quality);
-
-			await _db.SaveChangesAsync(cancellationToken);
-
-			return Ok(existing);
+			return updated == null
+				? NotFound(new { message = "Item not found." })
+				: Ok(updated);
 		}
 
 		[HttpGet("{id:int}")]
-		public async Task<IActionResult> Details(
+		public Task<IActionResult> Details(
 			[FromRoute] int id,
 			CancellationToken cancellationToken)
 		{
-			if (id <= 0)
-			{
-				return BadRequest(new
-				{
-					message = "Invalid item ID."
-				});
-			}
-
-			var item = await _db.Items
-				.AsNoTracking()
-				.FirstOrDefaultAsync(
-					current => current.Id == id,
-					cancellationToken);
-
-			if (item == null)
-			{
-				return NotFound(new
-				{
-					message = "Item not found."
-				});
-			}
-
-			return Ok(item);
+			return GetItem(id, cancellationToken);
 		}
 
 		[HttpGet("{id:int}/delete")]
-		public async Task<IActionResult> Delete(
+		public Task<IActionResult> Delete(
 			[FromRoute] int id,
 			CancellationToken cancellationToken)
 		{
-			if (id <= 0)
-			{
-				return BadRequest(new
-				{
-					message = "Invalid item ID."
-				});
-			}
-
-			var item = await _db.Items
-				.AsNoTracking()
-				.FirstOrDefaultAsync(
-					current => current.Id == id,
-					cancellationToken);
-
-			if (item == null)
-			{
-				return NotFound(new
-				{
-					message = "Item not found."
-				});
-			}
-
-			return Ok(item);
+			return GetItem(id, cancellationToken);
 		}
 
 		[HttpDelete("{id:int}")]
@@ -199,36 +101,30 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 		{
 			if (id <= 0)
 			{
-				return BadRequest(new
-				{
-					message = "Invalid item ID."
-				});
+				return BadRequest(new { message = "Invalid item ID." });
 			}
 
-			var item = await _db.Items
-				.FirstOrDefaultAsync(
-					current => current.Id == id,
-					cancellationToken);
+			bool deleted = await _items.DeleteAsync(id, cancellationToken);
 
-			if (item == null)
-			{
-				return NotFound(new
-				{
-					message = "Item not found."
-				});
-			}
-
-			_db.Items.Remove(item);
-			await _db.SaveChangesAsync(cancellationToken);
-
-			return NoContent();
+			return deleted
+				? NoContent()
+				: NotFound(new { message = "Item not found." });
 		}
 
-		private static string? NormalizeOptional(string? value)
+		private async Task<IActionResult> GetItem(
+			int id,
+			CancellationToken cancellationToken)
 		{
-			return string.IsNullOrWhiteSpace(value)
-				? null
-				: value.Trim();
+			if (id <= 0)
+			{
+				return BadRequest(new { message = "Invalid item ID." });
+			}
+
+			Item? item = await _items.GetAsync(id, cancellationToken);
+
+			return item == null
+				? NotFound(new { message = "Item not found." })
+				: Ok(item);
 		}
 	}
 }

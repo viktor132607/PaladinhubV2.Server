@@ -316,6 +316,40 @@ Controller refactors must preserve established V1 business semantics unless a be
 
 ---
 
+## Source-of-truth example 6: Remaining controller workflow batch
+
+The remaining controllers identified as structural refactor candidates were converted to thin HTTP boundaries without intentionally changing their working behavior.
+
+### Controllers and services
+
+- `PageBuilderController` -> `IPageBuilderAdminService` / `PageBuilderAdminService`
+  - page lookup, section/slug normalization, create/edit/delete persistence
+- `TalentsController` -> `ITalentsPageService` / `TalentsPageService`
+  - spell/item loading, talent-tree composition and key resolution
+- `PaladinController` -> `IPaladinPageService` / `PaladinPageService`
+  - section service orchestration, combined page models, talent loading and content-page rendering
+- `PromoCodesController` -> `IPromoCodeAdminService` / `PromoCodeAdminService`
+  - Admin listing, normalization/validation, duplicate checking, creation and deactivation orchestration
+- `ItemsController` -> `IItemAdminService` / `ItemAdminService`
+  - Admin item CRUD and normalization
+- `SpellsController` -> `ISpellAdminService` / `SpellAdminService`
+  - Admin spell CRUD and normalization
+- `DatabaseController` -> `IAdminDatabaseService` / `AdminDatabaseService`
+  - entity selection, search, pagination and Admin database model composition
+- `AuthApiController` -> `IAuthService` / `AuthService`
+  - registration, login, 2FA login, recovery-code login, password change, session response composition and role workflow
+- `AccountSecurityController` -> `IAccountSecurityApplicationService` / `AccountSecurityApplicationService`
+  - security overview, authenticator setup/verification, recovery-code generation and logout-all orchestration
+
+### Batch-specific rules learned
+
+- Existing low-level/domain services should remain in place; focused application services coordinate them rather than duplicating them.
+- Antiforgery, HTTP status mapping and session reads/writes remain controller concerns.
+- Auth/2FA response messages, status codes and authenticator behavior are contracts and must be preserved during structural refactoring.
+- Request/response DTOs that are reusable API contracts should live outside controller files.
+
+---
+
 ## Pattern for the next large controller
 
 When asked to "refactor this controller like Checkout" or "do the same as Account":
