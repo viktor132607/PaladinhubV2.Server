@@ -44,6 +44,12 @@ This file is the reference pattern for future controller refactors in `PaladinHu
    - functional changes and bug fixes require either an explicit request or confirmed evidence that the existing behavior is actually broken
    - if behavior looks suspicious but its intent is uncertain, preserve it and flag it separately instead of silently changing it
 
+8. **Do not invent domain services for functionality that does not exist yet**
+   - a `204` placeholder or `501 Not Implemented` endpoint may be moved into the controller that will eventually own that responsibility without creating a fake service underneath it
+   - introduce a service interface/implementation only when there is real business, persistence, provider or orchestration behavior to own
+   - existing working services must be reused when they already own the behavior
+   - future-feature controller structure is allowed, but it must not silently create missing product logic
+
 ---
 
 ## Source-of-truth example 1: Checkout
@@ -116,16 +122,30 @@ The original `AccountController` mixed account overview queries, transaction pag
   - SetDefaultAvatar
 
 - `AccountProfileController`
-  - Settings
-  - AccountDetails
-  - Privacy
+  - AccountDetails placeholder
+  - EditProfile placeholder
+  - EditBattleTag placeholder
+
+- `AccountPreferencesController`
+  - Settings placeholder
+  - Privacy placeholder
+
+- `AccountContactController`
   - MarkPhoneVerified
-  - profile/address placeholder endpoints
+  - EditEmail placeholder
+  - EditPhone placeholder
+  - RemovePhone placeholder
+
+- `AccountAddressesController`
+  - AddAddress placeholder
+  - EditAddress placeholder
 
 - `AccountConnectionsController`
-  - Connections
-  - ConnectProvider
-  - RemoveApp
+  - Connections placeholder
+  - ConnectProvider placeholder
+
+- `AccountApplicationsController`
+  - RemoveApp placeholder
 
 - `AccountSessionController`
   - Logout
@@ -169,9 +189,11 @@ All controllers keep the shared legacy/API route bases:
   - region/currency compatibility helpers
   - uploaded-avatar enumeration
 
-### Account-specific rule learned
+### Account-specific rules learned
 
 Before creating a new service, inspect existing domain services. The Account refactor reused and extended `IAvatarService`, `ISecurityService`, `IWalletService`, `IPromoCodeService` and `IAccountUiService` instead of copying their responsibilities into new services.
+
+When splitting unfinished account features, preserve their existing `204`/`501` behavior and move each endpoint only to the controller that should eventually own it. Do not create empty `ProfileService`, `AddressService`, `ConnectionsService`, OAuth/provider services or similar abstractions until real behavior exists. `MarkPhoneVerified` continues to reuse `IAccountUiService` for the current-user boundary and `ISecurityService` for the actual mutation.
 
 ---
 
@@ -364,8 +386,9 @@ When asked to "refactor this controller like Checkout" or "do the same as Accoun
 8. Preserve existing routes, response contracts and established business behavior unless explicitly told to change them.
 9. If V1 is the known-working reference for a V2 feature, compare against V1 before treating unusual behavior as a bug.
 10. Check for duplicated legacy/API routes and remove them only as a separate migration step.
-11. Build/test before committing whenever the environment permits it.
-12. If no .NET SDK/CI is available, perform source-level dependency, route and diff checks and state that compile verification is still pending.
+11. Do not create empty domain services solely to back `204` or `501` future-feature placeholders; create the controller boundary now and the service when real behavior is implemented.
+12. Build/test before committing whenever the environment permits it.
+13. If no .NET SDK/CI is available, perform source-level dependency, route and diff checks and state that compile verification is still pending.
 
 ## Repository workflow
 

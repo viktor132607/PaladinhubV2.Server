@@ -8,18 +8,17 @@ namespace PaladinHubV2.Server.API.Controllers.Accounts
 	[Authorize]
 	[Route("api/account")]
 	[Route("Account")]
-	public sealed class AccountConnectionsController : ControllerBase
+	public sealed class AccountAddressesController : ControllerBase
 	{
-		[HttpGet("Connections")]
-		public IActionResult Connections() => NoContent();
+		[HttpGet("AddAddress")]
+		public IActionResult AddAddress() =>
+			NotImplemented(
+				"Address creation is not implemented yet.");
 
-		[HttpGet("ConnectProvider")]
-		public IActionResult ConnectProvider(
-			[FromQuery] string provider)
-		{
-			return NotImplemented(
-				$"Connecting to {provider} is not implemented yet.");
-		}
+		[HttpGet("EditAddress")]
+		public IActionResult EditAddress() =>
+			NotImplemented(
+				"Address editing is not implemented yet.");
 
 		private IActionResult NotImplemented(string message)
 		{
