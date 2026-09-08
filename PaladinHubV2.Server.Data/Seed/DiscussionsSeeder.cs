@@ -18,9 +18,11 @@ namespace PaladinHubV2.Server.Data.Seed
 			var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 			var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
 
-			var adminEmail = "iliev132607@gmail.com";
-			var admin = await userManager.Users.FirstOrDefaultAsync(u => u.Email == adminEmail)
-						?? throw new Exception("Admin user not found. Run UsersSeeder first.");
+			var adminEmail = Environment.GetEnvironmentVariable("ADMIN_EMAIL")
+				?? throw new Exception("ADMIN_EMAIL environment variable is not set.");
+
+			var admin = await userManager.FindByEmailAsync(adminEmail)
+				?? throw new Exception($"Admin user '{adminEmail}' not found. Run UsersSeeder first.");
 
 			var authorEmails = new[]
 			{
@@ -77,7 +79,7 @@ namespace PaladinHubV2.Server.Data.Seed
 				var (title, content) = templates[i];
 
 				if (existing.Contains((author.Id, title)))
-					continue; 
+					continue;
 
 				var post = new DiscussionPost
 				{
