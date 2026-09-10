@@ -6,28 +6,46 @@ namespace PaladinHubV2.Server.Domain.Services.PageBuilder
 {
 	public interface IJsonLayoutValidator
 	{
-		/// <summary>Хвърля <see cref="JsonLayoutValidationException"/> ако layout-ът е невалиден.</summary>
 		void ValidateOrThrow(string jsonLayout);
 	}
 
 	public sealed class JsonLayoutValidationException : Exception
 	{
 		public IReadOnlyList<string> Errors { get; }
-		public JsonLayoutValidationException(IReadOnlyList<string> errors) : base("Layout validation failed")
-			=> Errors = errors;
+
+		public JsonLayoutValidationException(IReadOnlyList<string> errors)
+			: base("Layout validation failed")
+		{
+			Errors = errors;
+		}
 	}
 
-	/// <summary>
-	/// Лек валидатор: корен = масив; всеки елемент е { type: string, props?: object }.
-	/// Позволени типове: pageheader|heading|tabs|table|tierlist|talenttree|markdown|callout|divider|switcher|section|itemgrid|spelllist|rotationcard|talentbuildmenu
-	/// Props не се валидират дълбоко на този етап (MVP).
-	/// </summary>
 	public sealed class JsonLayoutValidator : IJsonLayoutValidator
 	{
 		private static readonly HashSet<string> Allowed = new(StringComparer.OrdinalIgnoreCase)
 		{
-			"talenttree.dynamic","pageheader","heading","tabs","table","tierlist","talenttree","markdown","callout","divider",
-			"switcher","section","itemgrid","spelllist","rotationcard","talentbuildmenu"
+			"talenttree.dynamic",
+			"pageheader",
+			"heading",
+			"paragraph",
+			"image",
+			"tabs",
+			"table",
+			"table.generic",
+			"table.gear",
+			"table.consumables",
+			"tierlist",
+			"talenttree",
+			"markdown",
+			"callout",
+			"divider",
+			"switcher",
+			"section",
+			"columnstext",
+			"itemgrid",
+			"spelllist",
+			"rotationcard",
+			"talentbuildmenu"
 		};
 
 		public void ValidateOrThrow(string jsonLayout)
@@ -36,83 +54,117 @@ namespace PaladinHubV2.Server.Domain.Services.PageBuilder
 
 			if (string.IsNullOrWhiteSpace(jsonLayout))
 			{
-				// празен → позволяваме
 				return;
 			}
 
-			JsonDocument doc;
-			try { doc = JsonDocument.Parse(jsonLayout); }
-			catch (Exception ex)
+			JsonDocument document;
+			try
 			{
-				throw new JsonLayoutValidationException(new[] { $"Invalid JSON: {ex.Message}" });
+				document = JsonDocument.Parse(jsonLayout);
+			}
+			catch (Exception exception)
+			{
+				throw new JsonLayoutValidationException(
+					new[] { $"Invalid JSON: {exception.Message}" });
 			}
 
-			using (doc)
+			using (document)
 			{
-				if (doc.RootElement.ValueKind != JsonValueKind.Array)
-					errors.Add("Layout root must be an array of blocks.");
-
-				if (errors.Count == 0)
+				var root = document.RootElement;
+				if (root.ValueKind != JsonValueKind.Array)
 				{
-					int i = 0;
-					foreach (var el in doc.RootElement.EnumerateArray())
+					errors.Add("Layout root must be an array of blocks.");
+				}
+				else
+				{
+					var index = 0;
+					foreach (var block in root.EnumerateArray())
 					{
-						if (el.ValueKind != JsonValueKind.Object)
+						if (block.ValueKind != JsonValueKind.Object)
 						{
-							errors.Add($"Block[{i}] must be an object.");
-							i++; continue;
+							errors.Add($"Block[{index}] must be an object.");
+							index++;
+							continue;
 						}
 
-						if (!el.TryGetProperty("type", out var typeEl) || typeEl.ValueKind != JsonValueKind.String)
-							errors.Add($"Block[{i}] is missing 'type' (string).");
+						if (!block.TryGetProperty("type", out var typeElement) ||
+							typeElement.ValueKind != JsonValueKind.String)
+						{
+							errors.Add($"Block[{index}] is missing 'type' (string).");
+						}
 						else
 						{
-							var type = typeEl.GetString() ?? "";
+							var type = typeElement.GetString() ?? string.Empty;
 							if (!Allowed.Contains(type))
-								errors.Add($"Block[{i}] has unsupported type '{type}'.");
-						}
-
-						// props е опционален; ако го има и е Tabs – проверяваме child blocks масив
-						if (el.TryGetProperty("props", out var propsEl) && propsEl.ValueKind == JsonValueKind.Object)
-						{
-							if (el.TryGetProperty("type", out var t2) && string.Equals(t2.GetString(), "tabs", StringComparison.OrdinalIgnoreCase))
 							{
-								if (propsEl.TryGetProperty("tabs", out var tabsEl) && tabsEl.ValueKind == JsonValueKind.Array)
-								{
-									int ti = 0;
-									foreach (var tab in tabsEl.EnumerateArray())
-									{
-										if (tab.ValueKind != JsonValueKind.Object) { errors.Add($"tabs[{ti}] must be object"); ti++; continue; }
-										if (tab.TryGetProperty("blocks", out var blocksEl))
-										{
-											if (blocksEl.ValueKind != JsonValueKind.Array)
-												errors.Add($"tabs[{ti}].blocks must be array");
-											else
-											{
-												int ci = 0;
-												foreach (var child in blocksEl.EnumerateArray())
-												{
-													if (child.ValueKind != JsonValueKind.Object) { errors.Add($"tabs[{ti}].blocks[{ci}] must be object"); ci++; continue; }
-													if (!child.TryGetProperty("type", out var ct) || ct.ValueKind != JsonValueKind.String)
-														errors.Add($"tabs[{ti}].blocks[{ci}] missing 'type'");
-													ci++;
-												}
-											}
-										}
-										ti++;
-									}
-								}
+								errors.Add($"Block[{index}] has unsupported type '{type}'.");
 							}
 						}
 
-						i++;
+						ValidateTabs(block, index, errors);
+						index++;
 					}
 				}
+
+				DynamicTalentValidator.Validate(root, errors);
 			}
 
-			using (var dynamicDocument = JsonDocument.Parse(jsonLayout))
-                DynamicTalentValidator.Validate(dynamicDocument.RootElement, errors);
-            if (errors.Count > 0) throw new JsonLayoutValidationException(errors);
+			if (errors.Count > 0)
+			{
+				throw new JsonLayoutValidationException(errors);
+			}
+		}
+
+		private static void ValidateTabs(
+			JsonElement block,
+			int blockIndex,
+			ICollection<string> errors)
+		{
+			if (!block.TryGetProperty("type", out var typeElement) ||
+				!string.Equals(typeElement.GetString(), "tabs", StringComparison.OrdinalIgnoreCase) ||
+				!block.TryGetProperty("props", out var propsElement) ||
+				propsElement.ValueKind != JsonValueKind.Object ||
+				!propsElement.TryGetProperty("tabs", out var tabsElement) ||
+				tabsElement.ValueKind != JsonValueKind.Array)
+			{
+				return;
+			}
+
+			var tabIndex = 0;
+			foreach (var tab in tabsElement.EnumerateArray())
+			{
+				if (tab.ValueKind != JsonValueKind.Object)
+				{
+					errors.Add($"Block[{blockIndex}].tabs[{tabIndex}] must be object.");
+					tabIndex++;
+					continue;
+				}
+
+				if (tab.TryGetProperty("blocks", out var blocksElement))
+				{
+					if (blocksElement.ValueKind != JsonValueKind.Array)
+					{
+						errors.Add($"Block[{blockIndex}].tabs[{tabIndex}].blocks must be array.");
+					}
+					else
+					{
+						var childIndex = 0;
+						foreach (var child in blocksElement.EnumerateArray())
+						{
+							if (child.ValueKind != JsonValueKind.Object ||
+								!child.TryGetProperty("type", out var childType) ||
+								childType.ValueKind != JsonValueKind.String)
+							{
+								errors.Add(
+									$"Block[{blockIndex}].tabs[{tabIndex}].blocks[{childIndex}] is missing 'type'.");
+							}
+							childIndex++;
+						}
+					}
+				}
+
+				tabIndex++;
+			}
 		}
 	}
 }
