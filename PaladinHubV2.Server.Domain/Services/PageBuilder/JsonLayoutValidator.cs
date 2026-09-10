@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text.Json;
 
@@ -26,7 +26,7 @@ namespace PaladinHubV2.Server.Domain.Services.PageBuilder
 	{
 		private static readonly HashSet<string> Allowed = new(StringComparer.OrdinalIgnoreCase)
 		{
-			"pageheader","heading","tabs","table","tierlist","talenttree","markdown","callout","divider",
+			"talenttree.dynamic","pageheader","heading","tabs","table","tierlist","talenttree","markdown","callout","divider",
 			"switcher","section","itemgrid","spelllist","rotationcard","talentbuildmenu"
 		};
 
@@ -110,7 +110,9 @@ namespace PaladinHubV2.Server.Domain.Services.PageBuilder
 				}
 			}
 
-			if (errors.Count > 0) throw new JsonLayoutValidationException(errors);
+			using (var dynamicDocument = JsonDocument.Parse(jsonLayout))
+                DynamicTalentValidator.Validate(dynamicDocument.RootElement, errors);
+            if (errors.Count > 0) throw new JsonLayoutValidationException(errors);
 		}
 	}
 }
