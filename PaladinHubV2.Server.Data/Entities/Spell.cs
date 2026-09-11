@@ -11,7 +11,7 @@ namespace PaladinHubV2.Server.Data.Entities
 		[MaxLength(100)]
 		public string Name { get; set; } = string.Empty;
 
-		[MaxLength(100)]
+		[MaxLength(2048)]
 		public string? Icon { get; set; }
 
 		[MaxLength(500)]

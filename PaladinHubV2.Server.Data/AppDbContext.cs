@@ -17,6 +17,8 @@ namespace PaladinHubV2.Server.Data
 
 		public DbSet<Item> Items => Set<Item>();
 		public DbSet<Spell> Spells => Set<Spell>();
+		public DbSet<RecordType> RecordTypes => Set<RecordType>();
+		public DbSet<SpellIcon> SpellIcons => Set<SpellIcon>();
 		public DbSet<Product> Products => Set<Product>();
 		public DbSet<Cart> Carts => Set<Cart>();
 		public DbSet<CartProduct> CartProducts => Set<CartProduct>();
@@ -73,6 +75,13 @@ namespace PaladinHubV2.Server.Data
 
 			ConfigureItems(builder);
 			ConfigureSpells(builder);
+            builder.Entity<RecordType>().HasData(
+                new RecordType { Name = "item" },
+                new RecordType { Name = "spell" },
+                new RecordType { Name = "talent" });
+            builder.Entity<Spell>().HasOne<RecordType>().WithMany()
+                .HasForeignKey(spell => spell.Quality).OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_Spells_RecordTypes_Quality");
 			ConfigureUsers(builder);
 			ConfigureCarts(builder);
 			ConfigureDiscussions(builder);
@@ -164,7 +173,7 @@ namespace PaladinHubV2.Server.Data
 					.HasMaxLength(100);
 
 				entity.Property(spell => spell.Icon)
-					.HasMaxLength(100);
+					.HasMaxLength(2048);
 
 				entity.Property(spell => spell.Description)
 					.HasMaxLength(2000);

@@ -47,10 +47,14 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 
 			spell.Id = 0;
 			NormalizeSpell(spell);
+            if (!await _db.RecordTypes.AnyAsync(type => type.Name == spell.Quality, cancellationToken))
+                return BadRequest(new { message = "Choose an existing type. Refresh the type list if it was changed." });
 
 			_db.Spells.Add(spell);
 
-			await _db.SaveChangesAsync(cancellationToken);
+			try { await _db.SaveChangesAsync(cancellationToken); }
+            catch (DbUpdateException exception) when (exception.InnerException is Npgsql.PostgresException { SqlState: "23503" })
+            { return Conflict(new { message = "This type changed. Refresh the type list and try again." }); }
 
 			return CreatedAtAction(
 				nameof(Details),
@@ -116,6 +120,10 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 				});
 			}
 
+            NormalizeSpell(spell);
+            if (!await _db.RecordTypes.AnyAsync(type => type.Name == spell.Quality, cancellationToken))
+                return BadRequest(new { message = "Choose an existing type. Refresh the type list if it was changed." });
+
 			existing.Name = spell.Name;
 			existing.Icon = spell.Icon;
 			existing.Description = spell.Description;
@@ -124,7 +132,9 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 
 			NormalizeSpell(existing);
 
-			await _db.SaveChangesAsync(cancellationToken);
+			try { await _db.SaveChangesAsync(cancellationToken); }
+            catch (DbUpdateException exception) when (exception.InnerException is Npgsql.PostgresException { SqlState: "23503" })
+            { return Conflict(new { message = "This type changed. Refresh the type list and try again." }); }
 
 			return Ok(existing);
 		}
