@@ -310,6 +310,35 @@ static async Task InitializeDatabaseAsync(
 	await database.Database
 		.EnsureCreatedAsync();
 
+	// EnsureCreated does not update an existing database. Keep this upgrade idempotent.
+    await database.Database.ExecuteSqlRawAsync("""
+        CREATE TABLE IF NOT EXISTS "SpellIcons" (
+            "Id" uuid PRIMARY KEY,
+            "Name" character varying(255) NOT NULL,
+            "ContentType" character varying(32) NOT NULL,
+            "Content" bytea NOT NULL,
+            "CreatedAtUtc" timestamp with time zone NOT NULL
+        );
+        ALTER TABLE "Spells" ALTER COLUMN "Icon" TYPE character varying(2048);
+        """);
+
+    await database.Database.ExecuteSqlRawAsync("""
+        DO $$
+        BEGIN
+            IF to_regclass('"RecordTypes"') IS NULL THEN
+                CREATE TABLE "RecordTypes" ("Name" character varying(50) PRIMARY KEY);
+                INSERT INTO "RecordTypes" ("Name") VALUES ('item'), ('spell'), ('talent');
+                UPDATE "Spells" SET "Quality" = COALESCE(NULLIF(lower(trim("Quality")), ''), 'spell');
+                INSERT INTO "RecordTypes" ("Name") SELECT DISTINCT "Quality" FROM "Spells" ON CONFLICT DO NOTHING;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_Spells_RecordTypes_Quality' AND conrelid = '"Spells"'::regclass AND confupdtype = 'c') THEN
+                ALTER TABLE "Spells" DROP CONSTRAINT IF EXISTS "FK_Spells_RecordTypes_Quality";
+                ALTER TABLE "Spells" ADD CONSTRAINT "FK_Spells_RecordTypes_Quality"
+                    FOREIGN KEY ("Quality") REFERENCES "RecordTypes" ("Name") ON UPDATE CASCADE ON DELETE RESTRICT;
+            END IF;
+        END $$;
+        """);
+
 	IEnumerable<ISeeder> seeders =
 		scope.ServiceProvider
 			.GetServices<ISeeder>()
