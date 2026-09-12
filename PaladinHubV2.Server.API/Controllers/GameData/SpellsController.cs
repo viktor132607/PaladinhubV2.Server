@@ -1,10 +1,8 @@
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using PaladinHubV2.Server.Data;
 using PaladinHubV2.Server.Data.Entities;
+using PaladinHubV2.Server.Domain.Services.SpellbookService;
 
 namespace PaladinHubV2.Server.API.Controllers.GameData
 {
@@ -13,11 +11,11 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 	[Route("Admin/api/spells")]
 	public sealed class SpellsController : ControllerBase
 	{
-		private readonly AppDbContext _db;
+		private readonly SpellAdminService _spells;
 
 		public SpellsController(AppDbContext db)
 		{
-			_db = db;
+			_spells = new SpellAdminService(db);
 		}
 
 		[HttpGet("create")]
@@ -45,34 +43,22 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 				return ValidationProblem(ModelState);
 			}
 
-			spell.Id = 0;
-			await using var categoryTransaction = await CategoryRules.BeginAsync(_db, cancellationToken);
-            if (!await CategoryRules.CanAssignAsync(_db, spell.CategoryId, null, cancellationToken))
-                return BadRequest(new { message = "Choose an active category." });
-            if (!await CategoryRules.CanAssignDisciplineAsync(_db, spell.DisciplineId, null, cancellationToken))
-                return BadRequest(new { message = "Choose an active class or specialization." });
-            if (!await CategoryRules.CanAssignPatchAsync(_db, spell.PatchId, null, cancellationToken))
-                return BadRequest(new { message = "Select an active patch." });
-            if (!await MediaController.CanAssign(db: _db, spell.Icon, null, cancellationToken))
-                return BadRequest(new { message = "Choose an active image from the media library." });
-            spell.TagIds = (spell.TagIds ?? []).Distinct().ToArray();
-            if (!await CategoryRules.CanAssignTagsAsync(_db, spell.TagIds, [], cancellationToken))
-                return BadRequest(new { message = "Choose existing active tags (up to 100)." });
-			NormalizeSpell(spell);
-            if (!await _db.RecordTypes.AnyAsync(type => type.Name == spell.Quality, cancellationToken))
-                return BadRequest(new { message = "Choose an existing type. Refresh the type list if it was changed." });
+			SpellMutationResult result =
+				await _spells.CreateAsync(
+					spell,
+					cancellationToken);
 
-			_db.Spells.Add(spell);
+			IActionResult? error = MapMutationError(result.Error);
 
-			try { await _db.SaveChangesAsync(cancellationToken); }
-            catch (DbUpdateException exception) when (exception.InnerException is Npgsql.PostgresException { SqlState: "23503" })
-            { return Conflict(new { message = "This type changed. Refresh the type list and try again." }); }
+			if (error != null)
+			{
+				return error;
+			}
 
-            await categoryTransaction.CommitAsync(cancellationToken);
 			return CreatedAtAction(
 				nameof(Details),
-				new { id = spell.Id },
-				spell);
+				new { id = result.Spell!.Id },
+				result.Spell);
 		}
 
 		[HttpGet("{id:int}/edit")]
@@ -92,10 +78,7 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 		{
 			if (id <= 0)
 			{
-				return BadRequest(new
-				{
-					message = "Invalid spell ID."
-				});
+				return InvalidId();
 			}
 
 			if (spell == null)
@@ -111,7 +94,7 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 				return BadRequest(new
 				{
 					message =
-							"The route ID does not match the spell ID."
+						"The route ID does not match the spell ID."
 				});
 			}
 
@@ -120,53 +103,25 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 				return ValidationProblem(ModelState);
 			}
 
-			await using var categoryTransaction = await CategoryRules.BeginAsync(_db, cancellationToken);
-			var existing = await _db.Spells
-				.FirstOrDefaultAsync(
-					current => current.Id == id,
+			SpellMutationResult result =
+				await _spells.UpdateAsync(
+					id,
+					spell,
 					cancellationToken);
 
-			if (existing == null)
+			if (result.Error == SpellMutationError.NotFound)
 			{
-				return NotFound(new
-				{
-					message = "Spell not found."
-				});
+				return SpellNotFound();
 			}
 
-            if (!await CategoryRules.CanAssignAsync(_db, spell.CategoryId, existing.CategoryId, cancellationToken))
-                return BadRequest(new { message = "Choose an active category." });
-            existing.CategoryId = spell.CategoryId;
-            if (!await CategoryRules.CanAssignDisciplineAsync(_db, spell.DisciplineId, existing.DisciplineId, cancellationToken))
-                return BadRequest(new { message = "Choose an active class or specialization." });
-            existing.DisciplineId = spell.DisciplineId;
-            if (!await CategoryRules.CanAssignPatchAsync(_db, spell.PatchId, existing.PatchId, cancellationToken))
-                return BadRequest(new { message = "Select an active patch." });
-            existing.PatchId = spell.PatchId;
-            if (!await MediaController.CanAssign(db: _db, spell.Icon, existing.Icon, cancellationToken))
-                return BadRequest(new { message = "Choose an active image from the media library." });
-            spell.TagIds = (spell.TagIds ?? []).Distinct().ToArray();
-            if (!await CategoryRules.CanAssignTagsAsync(_db, spell.TagIds, existing.TagIds, cancellationToken))
-                return BadRequest(new { message = "Choose existing active tags (up to 100)." });
-            existing.TagIds = spell.TagIds;
-            NormalizeSpell(spell);
-            if (!await _db.RecordTypes.AnyAsync(type => type.Name == spell.Quality, cancellationToken))
-                return BadRequest(new { message = "Choose an existing type. Refresh the type list if it was changed." });
+			IActionResult? error = MapMutationError(result.Error);
 
-			existing.Name = spell.Name;
-			existing.Icon = spell.Icon;
-			existing.Description = spell.Description;
-			existing.Url = spell.Url;
-			existing.Quality = spell.Quality;
+			if (error != null)
+			{
+				return error;
+			}
 
-			NormalizeSpell(existing);
-
-			try { await _db.SaveChangesAsync(cancellationToken); }
-            catch (DbUpdateException exception) when (exception.InnerException is Npgsql.PostgresException { SqlState: "23503" })
-            { return Conflict(new { message = "This type changed. Refresh the type list and try again." }); }
-
-            await categoryTransaction.CommitAsync(cancellationToken);
-			return Ok(existing);
+			return Ok(result.Spell);
 		}
 
 		[HttpGet("{id:int}")]
@@ -176,24 +131,15 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 		{
 			if (id <= 0)
 			{
-				return BadRequest(new
-				{
-					message = "Invalid spell ID."
-				});
+				return InvalidId();
 			}
 
-			var spell = await _db.Spells
-				.AsNoTracking()
-				.FirstOrDefaultAsync(
-					current => current.Id == id,
-					cancellationToken);
+			Spell? spell =
+				await _spells.GetAsync(id, cancellationToken);
 
 			if (spell == null)
 			{
-				return NotFound(new
-				{
-					message = "Spell not found."
-				});
+				return SpellNotFound();
 			}
 
 			return Ok(spell);
@@ -215,48 +161,84 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 		{
 			if (id <= 0)
 			{
-				return BadRequest(new
-				{
-					message = "Invalid spell ID."
-				});
+				return InvalidId();
 			}
 
-			var spell = await _db.Spells
-				.FirstOrDefaultAsync(
-					current => current.Id == id,
-					cancellationToken);
+			bool deleted =
+				await _spells.DeleteAsync(id, cancellationToken);
 
-			if (spell == null)
+			if (!deleted)
 			{
-				return NotFound(new
-				{
-					message = "Spell not found."
-				});
+				return SpellNotFound();
 			}
-
-			_db.Spells.Remove(spell);
-
-			await _db.SaveChangesAsync(cancellationToken);
 
 			return NoContent();
 		}
 
-		private static void NormalizeSpell(Spell spell)
+		private IActionResult? MapMutationError(
+			SpellMutationError error)
 		{
-			spell.Name = spell.Name.Trim();
-			spell.Icon = NormalizeOptional(spell.Icon);
-			spell.Description = NormalizeOptional(spell.Description);
-			spell.Url = NormalizeOptional(spell.Url);
-			spell.Quality = string.IsNullOrWhiteSpace(spell.Quality)
-				? "spell"
-				: spell.Quality.Trim().ToLowerInvariant();
+			return error switch
+			{
+				SpellMutationError.None => null,
+				SpellMutationError.InvalidCategory =>
+					BadRequest(new
+					{
+						message = "Choose an active category."
+					}),
+				SpellMutationError.InvalidDiscipline =>
+					BadRequest(new
+					{
+						message =
+							"Choose an active class or specialization."
+					}),
+				SpellMutationError.InvalidPatch =>
+					BadRequest(new
+					{
+						message = "Select an active patch."
+					}),
+				SpellMutationError.InvalidMedia =>
+					BadRequest(new
+					{
+						message =
+							"Choose an active image from the media library."
+					}),
+				SpellMutationError.InvalidTags =>
+					BadRequest(new
+					{
+						message =
+							"Choose existing active tags (up to 100)."
+					}),
+				SpellMutationError.InvalidRecordType =>
+					BadRequest(new
+					{
+						message =
+							"Choose an existing type. Refresh the type list if it was changed."
+					}),
+				SpellMutationError.RecordTypeChanged =>
+					Conflict(new
+					{
+						message =
+							"This type changed. Refresh the type list and try again."
+					}),
+				_ => null
+			};
 		}
 
-		private static string? NormalizeOptional(string? value)
+		private IActionResult InvalidId()
 		{
-			return string.IsNullOrWhiteSpace(value)
-				? null
-				: value.Trim();
+			return BadRequest(new
+			{
+				message = "Invalid spell ID."
+			});
+		}
+
+		private IActionResult SpellNotFound()
+		{
+			return NotFound(new
+			{
+				message = "Spell not found."
+			});
 		}
 	}
 }
