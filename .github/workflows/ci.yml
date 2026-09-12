@@ -21,10 +21,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
 
@@ -34,8 +34,14 @@ jobs:
       - name: Restore catalog checks
         run: dotnet restore tests/CatalogModelChecks/CatalogModelChecks.csproj
 
+      - name: Restore unit tests
+        run: dotnet restore tests/PaladinHubV2.Server.Tests/PaladinHubV2.Server.Tests.csproj
+
       - name: Build solution
         run: dotnet build PaladinHubV2.Server.sln --configuration Release --no-restore
 
       - name: Run catalog model checks
         run: dotnet run --project tests/CatalogModelChecks/CatalogModelChecks.csproj --configuration Release --no-restore
+
+      - name: Run controller unit tests
+        run: dotnet test tests/PaladinHubV2.Server.Tests/PaladinHubV2.Server.Tests.csproj --configuration Release --no-restore
