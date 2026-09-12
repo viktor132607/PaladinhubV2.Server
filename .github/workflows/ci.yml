@@ -44,4 +44,4 @@ jobs:
         run: dotnet run --project tests/CatalogModelChecks/CatalogModelChecks.csproj --configuration Release --no-restore
 
       - name: Run controller unit tests
-        run: dotnet test tests/PaladinHubV2.Server.Tests/PaladinHubV2.Server.Tests.csproj --configuration Release --no-restore
+        run: dotnet test --project tests/PaladinHubV2.Server.Tests/PaladinHubV2.Server.Tests.csproj --configuration Release --no-restore
