@@ -262,33 +262,32 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 			services.AddScoped<
 				ISpellbookService,
 				SpellbookService>();
-
 			services.AddScoped<SpellAdminService>();
+			services.AddScoped<TalentPageService>();
 
 			services.AddScoped<
 				IItemsService,
 				ItemsService>();
+			services.AddScoped<ItemAdminService>();
 
 			services.AddScoped<
 				ICartService,
 				CartService>();
+			services.AddScoped<CartFlowService>();
 
 			services.AddScoped<
 				IProductService,
 				ProductServiceAlias>();
+			services.AddScoped<IProductAdminFormService, ProductAdminFormService>();
+			services.AddScoped<MerchandiseService>();
 
 			services.AddScoped<
 				IRoleService,
 				RoleService>();
 
 			services.AddTransient<HolySectionService>();
-
-			services.AddTransient<
-				ProtectionSectionService>();
-
-			services.AddTransient<
-				RetributionSectionService>();
-
+			services.AddTransient<ProtectionSectionService>();
+			services.AddTransient<RetributionSectionService>();
 			services.AddScoped<PaladinContentService>();
 
 			services.AddScoped<
@@ -298,10 +297,13 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 			services.AddScoped<
 				IAccountUiService,
 				AccountUiService>();
+			services.AddScoped<AuthSessionService>();
+			services.AddScoped<AuthRegistrationService>();
 
 			services.AddScoped<
 				ISecurityService,
 				SecurityService>();
+			services.AddScoped<AccountTwoFactorService>();
 
 			services.AddScoped<
 				IAvatarService,
@@ -330,11 +332,9 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 			services.AddScoped<
 				ICheckoutSessionService,
 				CheckoutSessionService>();
-
 			services.AddScoped<
 				ICheckoutOrderService,
 				CheckoutOrderService>();
-
 			services.AddScoped<
 				ICheckoutCardPaymentService,
 				CheckoutCardPaymentService>();
@@ -350,11 +350,9 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 			services.AddScoped<
 				ISpecializationTreeBuilder,
 				HolySpecTreeBuilder>();
-
 			services.AddScoped<
 				ISpecializationTreeBuilder,
 				ProtectionSpecTreeBuilder>();
-
 			services.AddScoped<
 				ISpecializationTreeBuilder,
 				RetributionSpecTreeBuilder>();
@@ -362,11 +360,9 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 			services.AddScoped<
 				IClassTreeBuilder,
 				PaladinClassTreeBuilder>();
-
 			services.AddScoped<
 				IHeroTalentTreesService,
 				HeroTalentTreesService>();
-
 			services.AddScoped<
 				ITalentTreeService,
 				TalentTreeService>();
@@ -374,7 +370,8 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 			services.AddScoped<
 				IPageService,
 				PageService>();
-
+			services.AddScoped<PageBuilderAdminService>();
+			services.AddScoped<PageManagementService>();
 			services.AddScoped<
 				IJsonLayoutValidator,
 				JsonLayoutValidator>();
@@ -386,6 +383,7 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 			services.AddScoped<
 				IPromoCodeService,
 				PromoCodeService>();
+			services.AddScoped<PromoCodeAdminService>();
 
 			return services;
 		}
@@ -405,25 +403,19 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 			string? environmentOrigins =
 				configuration["CORS_ALLOWED_ORIGINS"];
 
-			if (!string.IsNullOrWhiteSpace(
-					environmentOrigins))
+			if (!string.IsNullOrWhiteSpace(environmentOrigins))
 			{
 				origins.AddRange(
 					environmentOrigins.Split(
 						[',', ';'],
-						StringSplitOptions
-							.RemoveEmptyEntries |
-						StringSplitOptions
-							.TrimEntries));
+						StringSplitOptions.RemoveEmptyEntries |
+						StringSplitOptions.TrimEntries));
 			}
 
 			string[] normalizedOrigins = origins
-				.Select(origin =>
-					origin.Trim().TrimEnd('/'))
-				.Where(origin =>
-					!string.IsNullOrWhiteSpace(origin))
-				.Distinct(
-					StringComparer.OrdinalIgnoreCase)
+				.Select(origin => origin.Trim().TrimEnd('/'))
+				.Where(origin => !string.IsNullOrWhiteSpace(origin))
+				.Distinct(StringComparer.OrdinalIgnoreCase)
 				.ToArray();
 
 			if (normalizedOrigins.Length > 0)
@@ -453,56 +445,35 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 
 			string? stripeSecretKey =
 				useLiveStripe
-					? configuration[
-						"STRIPE__SECRETKEY_LIVE"] ??
-					  configuration[
-						"Stripe__SecretKey_Live"] ??
-					  configuration[
-						"Stripe:SecretKey_Live"]
-					: configuration[
-						"STRIPE__SECRETKEY_TEST"] ??
-					  configuration[
-						"Stripe__SecretKey_Test"] ??
-					  configuration[
-						"Stripe:SecretKey_Test"];
+					? configuration["STRIPE__SECRETKEY_LIVE"] ??
+					  configuration["Stripe__SecretKey_Live"] ??
+					  configuration["Stripe:SecretKey_Live"]
+					: configuration["STRIPE__SECRETKEY_TEST"] ??
+					  configuration["Stripe__SecretKey_Test"] ??
+					  configuration["Stripe:SecretKey_Test"];
 
 			string? stripePublishableKey =
 				useLiveStripe
-					? configuration[
-						"STRIPE__PUBLISHABLEKEY_LIVE"] ??
-					  configuration[
-						"Stripe__PublishableKey_Live"] ??
-					  configuration[
-						"Stripe:PublishableKey_Live"]
-					: configuration[
-						"STRIPE__PUBLISHABLEKEY_TEST"] ??
-					  configuration[
-						"Stripe__PublishableKey_Test"] ??
-					  configuration[
-						"Stripe:PublishableKey_Test"];
+					? configuration["STRIPE__PUBLISHABLEKEY_LIVE"] ??
+					  configuration["Stripe__PublishableKey_Live"] ??
+					  configuration["Stripe:PublishableKey_Live"]
+					: configuration["STRIPE__PUBLISHABLEKEY_TEST"] ??
+					  configuration["Stripe__PublishableKey_Test"] ??
+					  configuration["Stripe:PublishableKey_Test"];
 
-			if (!string.IsNullOrWhiteSpace(
-					stripeSecretKey))
+			if (!string.IsNullOrWhiteSpace(stripeSecretKey))
 			{
-				StripeConfiguration.ApiKey =
-					stripeSecretKey;
+				StripeConfiguration.ApiKey = stripeSecretKey;
 			}
 
-			if (configuration is
-				ConfigurationManager manager)
+			if (configuration is ConfigurationManager manager)
 			{
-				manager["Stripe:SecretKey"] =
-					stripeSecretKey ??
-					string.Empty;
-
-				manager["Stripe:PublishableKey"] =
-					stripePublishableKey ??
-					string.Empty;
+				manager["Stripe:SecretKey"] = stripeSecretKey ?? string.Empty;
+				manager["Stripe:PublishableKey"] = stripePublishableKey ?? string.Empty;
 			}
 		}
 
-		private static bool IsApiRequest(
-			HttpRequest request)
+		private static bool IsApiRequest(HttpRequest request)
 		{
 			if (request.Path.StartsWithSegments(
 					"/api",
@@ -516,9 +487,7 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 					.Any(value =>
 						value?.Contains(
 							"application/json",
-							StringComparison
-								.OrdinalIgnoreCase) ==
-						true);
+							StringComparison.OrdinalIgnoreCase) == true);
 
 			if (acceptsJson)
 			{
@@ -526,8 +495,7 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 			}
 
 			return string.Equals(
-				request.Headers[
-					"X-Requested-With"].ToString(),
+				request.Headers["X-Requested-With"].ToString(),
 				"XMLHttpRequest",
 				StringComparison.OrdinalIgnoreCase);
 		}
