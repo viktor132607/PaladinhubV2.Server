@@ -7,6 +7,8 @@ namespace PaladinHubV2.Server.Data.Entities
 		[Key]
 		public int Id { get; set; }
 
+		public int? CategoryId { get; set; }
+
 		[Required]
 		[MaxLength(100)]
 		public string Name { get; set; } = string.Empty;

@@ -46,6 +46,9 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 			}
 
 			spell.Id = 0;
+			await using var categoryTransaction = await CategoryRules.BeginAsync(_db, cancellationToken);
+            if (!await CategoryRules.CanAssignAsync(_db, spell.CategoryId, null, cancellationToken))
+                return BadRequest(new { message = "Choose an active category." });
 			NormalizeSpell(spell);
             if (!await _db.RecordTypes.AnyAsync(type => type.Name == spell.Quality, cancellationToken))
                 return BadRequest(new { message = "Choose an existing type. Refresh the type list if it was changed." });
@@ -56,6 +59,7 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
             catch (DbUpdateException exception) when (exception.InnerException is Npgsql.PostgresException { SqlState: "23503" })
             { return Conflict(new { message = "This type changed. Refresh the type list and try again." }); }
 
+            await categoryTransaction.CommitAsync(cancellationToken);
 			return CreatedAtAction(
 				nameof(Details),
 				new { id = spell.Id },
@@ -107,6 +111,7 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 				return ValidationProblem(ModelState);
 			}
 
+			await using var categoryTransaction = await CategoryRules.BeginAsync(_db, cancellationToken);
 			var existing = await _db.Spells
 				.FirstOrDefaultAsync(
 					current => current.Id == id,
@@ -120,6 +125,9 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 				});
 			}
 
+            if (!await CategoryRules.CanAssignAsync(_db, spell.CategoryId, existing.CategoryId, cancellationToken))
+                return BadRequest(new { message = "Choose an active category." });
+            existing.CategoryId = spell.CategoryId;
             NormalizeSpell(spell);
             if (!await _db.RecordTypes.AnyAsync(type => type.Name == spell.Quality, cancellationToken))
                 return BadRequest(new { message = "Choose an existing type. Refresh the type list if it was changed." });
@@ -136,6 +144,7 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
             catch (DbUpdateException exception) when (exception.InnerException is Npgsql.PostgresException { SqlState: "23503" })
             { return Conflict(new { message = "This type changed. Refresh the type list and try again." }); }
 
+            await categoryTransaction.CommitAsync(cancellationToken);
 			return Ok(existing);
 		}
 

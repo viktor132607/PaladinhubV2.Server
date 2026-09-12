@@ -38,6 +38,9 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 			}
 
 			item.Id = 0;
+			await using var categoryTransaction = await CategoryRules.BeginAsync(_db, cancellationToken);
+            if (!await CategoryRules.CanAssignAsync(_db, item.CategoryId, null, cancellationToken))
+                return BadRequest(new { message = "Choose an active category." });
 			item.Name = item.Name.Trim();
 			item.Icon = NormalizeOptional(item.Icon);
 			item.SecondIcon = NormalizeOptional(item.SecondIcon);
@@ -48,6 +51,7 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 			_db.Items.Add(item);
 			await _db.SaveChangesAsync(cancellationToken);
 
+            await categoryTransaction.CommitAsync(cancellationToken);
 			return CreatedAtAction(
 				nameof(Details),
 				new { id = item.Id },
@@ -104,6 +108,7 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 				return ValidationProblem(ModelState);
 			}
 
+			await using var categoryTransaction = await CategoryRules.BeginAsync(_db, cancellationToken);
 			var existing = await _db.Items
 				.FirstOrDefaultAsync(
 					current => current.Id == id,
@@ -118,6 +123,9 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 			}
 
 			existing.Name = item.Name.Trim();
+            if (!await CategoryRules.CanAssignAsync(_db, item.CategoryId, existing.CategoryId, cancellationToken))
+                return BadRequest(new { message = "Choose an active category." });
+            existing.CategoryId = item.CategoryId;
 			existing.Icon = NormalizeOptional(item.Icon);
 			existing.SecondIcon = NormalizeOptional(item.SecondIcon);
 			existing.Description = NormalizeOptional(item.Description);
@@ -128,6 +136,7 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 
 			await _db.SaveChangesAsync(cancellationToken);
 
+            await categoryTransaction.CommitAsync(cancellationToken);
 			return Ok(existing);
 		}
 

@@ -16,6 +16,8 @@ namespace PaladinHubV2.Server.Data
 		}
 
 		public DbSet<Item> Items => Set<Item>();
+		public DbSet<Category> Categories => Set<Category>();
+		public DbSet<CategoryRevision> CategoryRevisions => Set<CategoryRevision>();
 		public DbSet<Spell> Spells => Set<Spell>();
 		public DbSet<RecordType> RecordTypes => Set<RecordType>();
 		public DbSet<SpellIcon> SpellIcons => Set<SpellIcon>();
@@ -75,6 +77,11 @@ namespace PaladinHubV2.Server.Data
 
 			ConfigureItems(builder);
 			ConfigureSpells(builder);
+            builder.Entity<Category>().HasOne<Category>().WithMany().HasForeignKey(c => c.ParentId).OnDelete(DeleteBehavior.Restrict);
+            builder.Entity<CategoryRevision>().HasOne<Category>().WithMany().HasForeignKey(r => r.CategoryId).OnDelete(DeleteBehavior.Restrict);
+            builder.Entity<CategoryRevision>().HasIndex(r => new { r.CategoryId, r.Version }).IsUnique();
+            builder.Entity<Spell>().HasOne<Category>().WithMany().HasForeignKey(s => s.CategoryId).OnDelete(DeleteBehavior.Restrict);
+            builder.Entity<Item>().HasOne<Category>().WithMany().HasForeignKey(i => i.CategoryId).OnDelete(DeleteBehavior.Restrict);
             builder.Entity<RecordType>().HasData(
                 new RecordType { Name = "item" },
                 new RecordType { Name = "spell" },

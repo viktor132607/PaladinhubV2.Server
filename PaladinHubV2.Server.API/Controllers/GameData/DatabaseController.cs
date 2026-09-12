@@ -27,10 +27,23 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 			[FromQuery] string? search = null,
 			[FromQuery] int page = 1,
 			[FromQuery] int pageSize = 20,
+            [FromQuery] int? categoryId = null,
 			CancellationToken cancellationToken = default)
 		{
 			var selectedEntity = ParseEntity(entity);
 			var normalizedSearch = search?.Trim() ?? string.Empty;
+            // A parent filter includes all descendants, not just direct assignments.
+            var categoryIds = new HashSet<int>();
+            if (categoryId > 0)
+            {
+                var categories = await _db.Categories.AsNoTracking().Where(c => !c.IsDeleted).ToListAsync(cancellationToken);
+                if (!categories.Any(c => c.Id == categoryId)) return BadRequest(new { message = "Category does not exist." });
+                categoryIds.Add(categoryId.Value);
+                var queue = new Queue<int>(); queue.Enqueue(categoryId.Value);
+                while (queue.TryDequeue(out var parent))
+                    foreach (var child in categories.Where(c => c.ParentId == parent))
+                        if (categoryIds.Add(child.Id)) queue.Enqueue(child.Id);
+            }
 
 			page = Math.Max(page, 1);
 			pageSize = Math.Clamp(pageSize, 1, 100);
@@ -48,6 +61,8 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 				var query = _db.Spells
 					.AsNoTracking()
 					.AsQueryable();
+                if (categoryId == 0) query = query.Where(s => s.CategoryId == null);
+                else if (categoryId > 0) query = query.Where(s => s.CategoryId != null && categoryIds.Contains(s.CategoryId.Value));
 
 				if (!string.IsNullOrWhiteSpace(normalizedSearch))
 				{
@@ -78,6 +93,8 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 				var query = _db.Items
 					.AsNoTracking()
 					.AsQueryable();
+                if (categoryId == 0) query = query.Where(i => i.CategoryId == null);
+                else if (categoryId > 0) query = query.Where(i => i.CategoryId != null && categoryIds.Contains(i.CategoryId.Value));
 
 				if (!string.IsNullOrWhiteSpace(normalizedSearch))
 				{
