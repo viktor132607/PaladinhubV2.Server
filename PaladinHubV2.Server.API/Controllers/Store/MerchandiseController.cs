@@ -54,6 +54,7 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 		}
 
 		[AllowAnonymous]
+		[HttpGet("~/api/home/merchandise")]
 		[HttpGet("~/Home/Merchandise")]
 		public async Task<IActionResult> LegacyMerchandise()
 		{
@@ -64,6 +65,7 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 		}
 
 		[Authorize]
+		[HttpGet("~/api/home/logged-in-products")]
 		[HttpGet("~/Home/IndexLoggedIn")]
 		public async Task<IActionResult> IndexLoggedIn()
 		{

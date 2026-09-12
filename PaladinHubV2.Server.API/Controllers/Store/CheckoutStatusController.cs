@@ -55,6 +55,7 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 			});
 		}
 
+		[HttpGet("~/api/home/thanks-for-purchasing")]
 		[HttpGet("~/Home/ThanksForPurchasing")]
 		public IActionResult ThanksForPurchasing()
 		{

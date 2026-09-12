@@ -31,6 +31,7 @@ namespace PaladinHubV2.Server.API.Controllers.Errors
 				instance: HttpContext.Request.Path);
 		}
 
+		[HttpGet("~/api/home/error")]
 		[HttpGet("~/Home/Error")]
 		[ResponseCache(
 			Duration = 0,
