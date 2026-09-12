@@ -5,7 +5,7 @@ services:
   - type: web
     runtime: docker
     name: paladinhubv2-api
-    repo: https://github.com/vitkor132607/PaladinHubV2.Server.git
+    repo: https://github.com/viktor132607/PaladinHubV2.Server.git
     branch: main
     plan: free
     region: frankfurt
@@ -15,7 +15,7 @@ services:
     dockerCommand: dotnet PaladinHubV2.Server.API.dll
 
     healthCheckPath: /health
-    autoDeployTrigger: commit
+    autoDeployTrigger: checksPass
 
     envVars:
       - key: PORT
@@ -122,12 +122,12 @@ services:
   - type: web
     runtime: static
     name: paladinhubv2-client
-    repo: https://github.com/vitkor132607/PaladinHubV2.Client.git
+    repo: https://github.com/viktor132607/PaladinHubV2.Client.git
     branch: main
 
     buildCommand: npm ci && npm run build
     staticPublishPath: ./out
-    autoDeployTrigger: commit
+    autoDeployTrigger: checksPass
 
     envVars:
       - key: NODE_VERSION

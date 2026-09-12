@@ -1,0 +1,41 @@
+name: Server CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: server-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build and test server
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore solution
+        run: dotnet restore PaladinHubV2.Server.sln
+
+      - name: Restore catalog checks
+        run: dotnet restore tests/CatalogModelChecks/CatalogModelChecks.csproj
+
+      - name: Build solution
+        run: dotnet build PaladinHubV2.Server.sln --configuration Release --no-restore
+
+      - name: Run catalog model checks
+        run: dotnet run --project tests/CatalogModelChecks/CatalogModelChecks.csproj --configuration Release --no-restore
