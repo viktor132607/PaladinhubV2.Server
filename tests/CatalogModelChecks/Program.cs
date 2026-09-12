@@ -8,7 +8,7 @@ using PaladinHubV2.Server.Data.Entities;
 using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
     .UseNpgsql("Host=127.0.0.1;Database=compile_only;Username=unused;Password=unused").Options);
 var schema = db.Database.GenerateCreateScript();
-foreach (var table in new[] { "MediaRevisions", "ItemRarities", "RarityRevisions", "GamePatches", "PatchRevisions", "GameTags", "TagRevisions", "GameDisciplines", "DisciplineRevisions" })
+foreach (var table in new[] { "NavigationLinks", "NavigationRevisions", "MediaRevisions", "ItemRarities", "RarityRevisions", "GamePatches", "PatchRevisions", "GameTags", "TagRevisions", "GameDisciplines", "DisciplineRevisions" })
     if (!schema.Contains($"CREATE TABLE \"{table}\"")) throw new Exception($"Missing table: {table}");
 if (!schema.Contains("\"TagIds\" integer[] NOT NULL")) throw new Exception("Tags must persist as a non-null array.");
 
@@ -22,7 +22,7 @@ var queries = new[] {
     db.GameTags.Select(t => new { t.Id, Count = db.Items.Count(i => i.TagIds.Contains(t.Id)) + db.Spells.Count(s => s.TagIds.Contains(t.Id)) }).ToQueryString()
 };
 if (queries.Any(string.IsNullOrWhiteSpace)) throw new Exception("A query did not translate.");
-foreach (var type in new[] { typeof(CategoriesController), typeof(ClassesController), typeof(TagsController), typeof(PatchesController), typeof(RaritiesController) })
+foreach (var type in new[] { typeof(CategoriesController), typeof(ClassesController), typeof(TagsController), typeof(PatchesController), typeof(RaritiesController), typeof(NavigationController) })
 {
     if (type.GetCustomAttributes(typeof(AuthorizeAttribute), true).Cast<AuthorizeAttribute>().All(a => a.Roles != "Admin"))
         throw new Exception($"Missing admin authorization: {type.Name}");
@@ -47,3 +47,10 @@ foreach (var method in new[] { "Edit", "Delete", "Restore" })
 if (typeof(MediaController).GetCustomAttributes(typeof(AuthorizeAttribute), true).Cast<AuthorizeAttribute>().All(a => a.Roles != "Admin")) throw new Exception("Media authorization missing");
 _ = db.SpellIcons.Select(i => new { size = i.Content.Length, count = db.Spells.Count(s => s.Icon != null && s.Icon.ToLower().Contains(i.Id.ToString())) }).ToQueryString();
 Console.WriteLine("PASS: media schema, byte length/reference query translation and authorization.");
+
+var safeHref = typeof(PaladinHubV2.Server.Domain.Services.Navigation.NavigationAdminService).GetMethod("SafeHref")!;
+foreach (var href in new[] { "/Holy/Overview", "https://example.com/path", "http://example.com" })
+    if (!(bool)safeHref.Invoke(null, new object?[] { href })!) throw new Exception("Valid link rejected");
+foreach (var href in new[] { "javascript:alert(1)", "//evil.test", "/\\evil.test", "data:text/html,hi", "\nhttps://example.com", "" })
+    if ((bool)safeHref.Invoke(null, new object?[] { href })!) throw new Exception("Unsafe link accepted");
+Console.WriteLine("PASS: navigation schema, auth/CSRF, URL protocol and control-character validation.");

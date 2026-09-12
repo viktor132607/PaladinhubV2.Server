@@ -28,7 +28,9 @@ namespace PaladinHubV2.Server.Data
 		public DbSet<CategoryRevision> CategoryRevisions => Set<CategoryRevision>();
 		public DbSet<Spell> Spells => Set<Spell>();
 		public DbSet<RecordType> RecordTypes => Set<RecordType>();
-		public DbSet<MediaRevision> MediaRevisions => Set<MediaRevision>();
+		public DbSet<NavigationLink> NavigationLinks => Set<NavigationLink>();
+        public DbSet<NavigationRevision> NavigationRevisions => Set<NavigationRevision>();
+        public DbSet<MediaRevision> MediaRevisions => Set<MediaRevision>();
         public DbSet<SpellIcon> SpellIcons => Set<SpellIcon>();
 		public DbSet<Product> Products => Set<Product>();
 		public DbSet<Cart> Carts => Set<Cart>();
@@ -88,6 +90,9 @@ namespace PaladinHubV2.Server.Data
 			ConfigureSpells(builder);
             builder.Entity<Category>().HasOne<Category>().WithMany().HasForeignKey(c => c.ParentId).OnDelete(DeleteBehavior.Restrict);
             builder.Entity<GameDiscipline>().HasOne<GameDiscipline>().WithMany().HasForeignKey(c => c.ParentId).OnDelete(DeleteBehavior.Restrict);
+            builder.Entity<NavigationLink>().HasOne<NavigationLink>().WithMany().HasForeignKey(r => r.ParentId).OnDelete(DeleteBehavior.Restrict);
+            builder.Entity<NavigationRevision>().HasOne<NavigationLink>().WithMany().HasForeignKey(r => r.NavigationId).OnDelete(DeleteBehavior.Restrict);
+            builder.Entity<NavigationRevision>().HasIndex(r => new { r.NavigationId, r.Version }).IsUnique();
             builder.Entity<MediaRevision>().HasOne<SpellIcon>().WithMany().HasForeignKey(r => r.MediaId).OnDelete(DeleteBehavior.Restrict);
             builder.Entity<MediaRevision>().HasIndex(r => new { r.MediaId, r.Version }).IsUnique();
             builder.Entity<RarityRevision>().HasOne<ItemRarity>().WithMany().HasForeignKey(r => r.RarityId).OnDelete(DeleteBehavior.Restrict);
