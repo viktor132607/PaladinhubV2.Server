@@ -53,6 +53,8 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
                 return BadRequest(new { message = "Choose an active class or specialization." });
             if (!await CategoryRules.CanAssignPatchAsync(_db, spell.PatchId, null, cancellationToken))
                 return BadRequest(new { message = "Select an active patch." });
+            if (!await MediaController.CanAssign(db: _db, spell.Icon, null, cancellationToken))
+                return BadRequest(new { message = "Choose an active image from the media library." });
             spell.TagIds = (spell.TagIds ?? []).Distinct().ToArray();
             if (!await CategoryRules.CanAssignTagsAsync(_db, spell.TagIds, [], cancellationToken))
                 return BadRequest(new { message = "Choose existing active tags (up to 100)." });
@@ -141,6 +143,8 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
             if (!await CategoryRules.CanAssignPatchAsync(_db, spell.PatchId, existing.PatchId, cancellationToken))
                 return BadRequest(new { message = "Select an active patch." });
             existing.PatchId = spell.PatchId;
+            if (!await MediaController.CanAssign(db: _db, spell.Icon, existing.Icon, cancellationToken))
+                return BadRequest(new { message = "Choose an active image from the media library." });
             spell.TagIds = (spell.TagIds ?? []).Distinct().ToArray();
             if (!await CategoryRules.CanAssignTagsAsync(_db, spell.TagIds, existing.TagIds, cancellationToken))
                 return BadRequest(new { message = "Choose existing active tags (up to 100)." });

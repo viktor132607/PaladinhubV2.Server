@@ -49,6 +49,10 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
             if (item.RarityId is not null && (rarity is null || rarity.IsDeleted || (rarity.IsArchived && item.RarityId != null)))
                 return BadRequest(new { message = "Choose an active rarity." });
             item.Quality = rarity?.Name;
+            if (!await MediaController.CanAssign(db: _db, item.Icon, null, cancellationToken))
+                return BadRequest(new { message = "Choose an active image from the media library." });
+            if (!await MediaController.CanAssign(db: _db, item.SecondIcon, null, cancellationToken))
+                return BadRequest(new { message = "Choose an active image from the media library." });
             item.TagIds = (item.TagIds ?? []).Distinct().ToArray();
             if (!await CategoryRules.CanAssignTagsAsync(_db, item.TagIds, [], cancellationToken))
                 return BadRequest(new { message = "Choose existing active tags (up to 100)." });
@@ -148,6 +152,10 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
                 return BadRequest(new { message = "Choose an active rarity." });
             item.Quality = rarity?.Name;
             existing.RarityId = item.RarityId;
+            if (!await MediaController.CanAssign(db: _db, item.Icon, existing.Icon, cancellationToken))
+                return BadRequest(new { message = "Choose an active image from the media library." });
+            if (!await MediaController.CanAssign(db: _db, item.SecondIcon, existing.SecondIcon, cancellationToken))
+                return BadRequest(new { message = "Choose an active image from the media library." });
             item.TagIds = (item.TagIds ?? []).Distinct().ToArray();
             if (!await CategoryRules.CanAssignTagsAsync(_db, item.TagIds, existing.TagIds, cancellationToken))
                 return BadRequest(new { message = "Choose existing active tags (up to 100)." });

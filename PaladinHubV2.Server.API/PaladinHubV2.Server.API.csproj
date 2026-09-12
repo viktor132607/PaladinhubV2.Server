@@ -27,6 +27,7 @@
     <EmbeddedResource Include="../docs/tags-upgrade.sql" LogicalName="DatabaseUpgrades.Tags.sql" />
     <EmbeddedResource Include="../docs/patches-upgrade.sql" LogicalName="DatabaseUpgrades.Patches.sql" />
     <EmbeddedResource Include="../docs/rarities-upgrade.sql" LogicalName="DatabaseUpgrades.Rarities.sql" />
+    <EmbeddedResource Include="../docs/media-upgrade.sql" LogicalName="DatabaseUpgrades.Media.sql" />
     <ProjectReference Include="..\PaladinHubV2.Server.Data\PaladinHubV2.Server.Data.csproj" />
     <ProjectReference Include="..\PaladinHubV2.Server.Core\PaladinHubV2.Server.Core.csproj" />
     <ProjectReference Include="..\PaladinHubV2.Server.Domain\PaladinHubV2.Server.Domain.csproj" />

@@ -23,13 +23,18 @@ public sealed class SpellIconsController(AppDbContext db) : ControllerBase
             .Where(spell => spell.Icon != null && spell.Icon != "")
             .Select(spell => new { spell.Name, spell.Icon, spell.Quality })
             .ToListAsync(cancellationToken);
-        var uploads = await db.SpellIcons.AsNoTracking()
+        var uploads = await db.SpellIcons.AsNoTracking().Where(icon => !icon.IsArchived && !icon.IsDeleted)
             .Select(icon => new { icon.Id, icon.Name }).ToListAsync(cancellationToken);
         var records = spells.Select(spell => new IconEntry(spell.Name, spell.Icon!, spell.Quality))
             .Concat(uploads.Select(icon => new IconEntry(icon.Name, $"/api/spell-icons/{icon.Id}", "upload")));
+        var items = await db.Items.AsNoTracking().Select(i => new { i.Name, i.Icon, i.SecondIcon }).ToListAsync(cancellationToken);
+        records = records.Concat(items.SelectMany(i => new[] { i.Icon, i.SecondIcon }.Where(v => !string.IsNullOrWhiteSpace(v))
+            .Select(v => new IconEntry(i.Name, v!.StartsWith("/") || v.Contains("://") ? v : "/images/ItemIcons/" + Uri.EscapeDataString(v), "item"))));
         if (!string.IsNullOrWhiteSpace(search))
             records = records.Where(icon => icon.Name.Contains(search.Trim(), StringComparison.OrdinalIgnoreCase)
                 || icon.Icon.Contains(search.Trim(), StringComparison.OrdinalIgnoreCase));
+        var hiddenIds = await db.SpellIcons.Where(i => i.IsArchived || i.IsDeleted).Select(i => i.Id.ToString()).ToListAsync(cancellationToken);
+        records = records.Where(r => !hiddenIds.Any(id => r.Icon.Contains(id, StringComparison.OrdinalIgnoreCase)));
         var all = records.DistinctBy(icon => icon.Icon).OrderBy(icon => icon.Name).ThenBy(icon => icon.Icon).ToList();
         var pages = Math.Max(1, (int)Math.Ceiling(all.Count / (double)pageSize));
         page = Math.Min(page, pages);
@@ -56,8 +61,11 @@ public sealed class SpellIconsController(AppDbContext db) : ControllerBase
             Id = Guid.NewGuid(), Name = name.Length > 255 ? name[..255] : name,
             ContentType = contentType, Content = content, CreatedAtUtc = DateTime.UtcNow
         };
+        await using var transaction = await CategoryRules.BeginAsync(db, cancellationToken);
         db.SpellIcons.Add(icon);
+        MediaController.Record(db, icon, "uploaded", User);
         await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return Ok(new { icon = $"/api/spell-icons/{icon.Id}", name = icon.Name });
     }
 

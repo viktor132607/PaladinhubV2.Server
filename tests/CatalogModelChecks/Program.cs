@@ -8,7 +8,7 @@ using PaladinHubV2.Server.Data.Entities;
 using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
     .UseNpgsql("Host=127.0.0.1;Database=compile_only;Username=unused;Password=unused").Options);
 var schema = db.Database.GenerateCreateScript();
-foreach (var table in new[] { "ItemRarities", "RarityRevisions", "GamePatches", "PatchRevisions", "GameTags", "TagRevisions", "GameDisciplines", "DisciplineRevisions" })
+foreach (var table in new[] { "MediaRevisions", "ItemRarities", "RarityRevisions", "GamePatches", "PatchRevisions", "GameTags", "TagRevisions", "GameDisciplines", "DisciplineRevisions" })
     if (!schema.Contains($"CREATE TABLE \"{table}\"")) throw new Exception($"Missing table: {table}");
 if (!schema.Contains("\"TagIds\" integer[] NOT NULL")) throw new Exception("Tags must persist as a non-null array.");
 
@@ -41,3 +41,9 @@ Console.WriteLine("PASS: patch tables, filter translation, assignment foreign ke
 
 if (!db.Model.FindEntityType(typeof(Item))!.FindProperty("RarityId")!.GetContainingForeignKeys().Any()) throw new Exception("Rarity FK missing");
 Console.WriteLine("PASS: rarity schema, FK, query translation and authorization.");
+
+foreach (var method in new[] { "Edit", "Delete", "Restore" })
+    if (!typeof(MediaController).GetMethod(method)!.IsDefined(typeof(ValidateAntiForgeryTokenAttribute), true)) throw new Exception("Media CSRF missing");
+if (typeof(MediaController).GetCustomAttributes(typeof(AuthorizeAttribute), true).Cast<AuthorizeAttribute>().All(a => a.Roles != "Admin")) throw new Exception("Media authorization missing");
+_ = db.SpellIcons.Select(i => new { size = i.Content.Length, count = db.Spells.Count(s => s.Icon != null && s.Icon.ToLower().Contains(i.Id.ToString())) }).ToQueryString();
+Console.WriteLine("PASS: media schema, byte length/reference query translation and authorization.");
