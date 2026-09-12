@@ -8,12 +8,13 @@ using PaladinHubV2.Server.Data.Entities;
 using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
     .UseNpgsql("Host=127.0.0.1;Database=compile_only;Username=unused;Password=unused").Options);
 var schema = db.Database.GenerateCreateScript();
-foreach (var table in new[] { "GamePatches", "PatchRevisions", "GameTags", "TagRevisions", "GameDisciplines", "DisciplineRevisions" })
+foreach (var table in new[] { "ItemRarities", "RarityRevisions", "GamePatches", "PatchRevisions", "GameTags", "TagRevisions", "GameDisciplines", "DisciplineRevisions" })
     if (!schema.Contains($"CREATE TABLE \"{table}\"")) throw new Exception($"Missing table: {table}");
 if (!schema.Contains("\"TagIds\" integer[] NOT NULL")) throw new Exception("Tags must persist as a non-null array.");
 
 // Compile the exact shapes used by filters/catalog counts without opening a network connection.
 var queries = new[] {
+    db.Items.Where(i => i.RarityId == 1).ToQueryString(),
     db.Spells.Where(s => s.PatchId == 1).ToQueryString(),
     db.Spells.Where(s => s.TagIds.Contains(1)).ToQueryString(),
     db.Items.Where(i => i.TagIds.Length == 0).ToQueryString(),
@@ -21,7 +22,7 @@ var queries = new[] {
     db.GameTags.Select(t => new { t.Id, Count = db.Items.Count(i => i.TagIds.Contains(t.Id)) + db.Spells.Count(s => s.TagIds.Contains(t.Id)) }).ToQueryString()
 };
 if (queries.Any(string.IsNullOrWhiteSpace)) throw new Exception("A query did not translate.");
-foreach (var type in new[] { typeof(CategoriesController), typeof(ClassesController), typeof(TagsController), typeof(PatchesController) })
+foreach (var type in new[] { typeof(CategoriesController), typeof(ClassesController), typeof(TagsController), typeof(PatchesController), typeof(RaritiesController) })
 {
     if (type.GetCustomAttributes(typeof(AuthorizeAttribute), true).Cast<AuthorizeAttribute>().All(a => a.Roles != "Admin"))
         throw new Exception($"Missing admin authorization: {type.Name}");
@@ -37,3 +38,6 @@ foreach (var type in new[] { typeof(Spell), typeof(Item) })
     if (!db.Model.FindEntityType(type)!.FindProperty("PatchId")!.GetContainingForeignKeys().Any())
         throw new Exception("Patch assignments require a foreign key.");
 Console.WriteLine("PASS: patch tables, filter translation, assignment foreign keys and authorization.");
+
+if (!db.Model.FindEntityType(typeof(Item))!.FindProperty("RarityId")!.GetContainingForeignKeys().Any()) throw new Exception("Rarity FK missing");
+Console.WriteLine("PASS: rarity schema, FK, query translation and authorization.");

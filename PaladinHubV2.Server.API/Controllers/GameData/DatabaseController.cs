@@ -31,6 +31,7 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
             [FromQuery] int? disciplineId = null,
             [FromQuery] int? tagId = null,
             [FromQuery] int? patchId = null,
+            [FromQuery] int? rarityId = null,
 			CancellationToken cancellationToken = default)
 		{
 			var selectedEntity = ParseEntity(entity);
@@ -115,6 +116,8 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
                 if (disciplineId == 0) query = query.Where(i => i.DisciplineId == null);
                 else if (disciplineId > 0) query = query.Where(i => i.DisciplineId != null && disciplineIds.Contains(i.DisciplineId.Value));
                 if (categoryId > 0) query = query.Where(i => i.CategoryId != null && categoryIds.Contains(i.CategoryId.Value));
+                if (rarityId == 0) query = query.Where(i => i.RarityId == null);
+                else if (rarityId > 0) query = query.Where(i => i.RarityId == rarityId);
                 if (patchId == 0) query = query.Where(i => i.PatchId == null);
                 else if (patchId > 0) query = query.Where(i => i.PatchId == patchId);
                 if (tagId == 0) query = query.Where(i => i.TagIds.Length == 0);

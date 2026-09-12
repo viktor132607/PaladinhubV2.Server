@@ -2087,6 +2087,8 @@ namespace PaladinHubV2.Server.Data.Seed
 			},
 			};
 
+            var rarities = await db.ItemRarities.AsNoTracking().ToListAsync();
+            foreach (var item in items) item.RarityId = rarities.FirstOrDefault(r => r.Name == item.Quality)?.Id;
 			await db.Items.AddRangeAsync(items);
 			await db.SaveChangesAsync();
 		}

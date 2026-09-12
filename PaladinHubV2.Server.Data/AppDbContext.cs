@@ -18,6 +18,8 @@ namespace PaladinHubV2.Server.Data
 		public DbSet<Item> Items => Set<Item>();
 		public DbSet<Category> Categories => Set<Category>();
         public DbSet<GameDiscipline> GameDisciplines => Set<GameDiscipline>();
+        public DbSet<ItemRarity> ItemRarities => Set<ItemRarity>();
+        public DbSet<RarityRevision> RarityRevisions => Set<RarityRevision>();
         public DbSet<GamePatch> GamePatches => Set<GamePatch>();
         public DbSet<PatchRevision> PatchRevisions => Set<PatchRevision>();
         public DbSet<GameTag> GameTags => Set<GameTag>();
@@ -85,6 +87,9 @@ namespace PaladinHubV2.Server.Data
 			ConfigureSpells(builder);
             builder.Entity<Category>().HasOne<Category>().WithMany().HasForeignKey(c => c.ParentId).OnDelete(DeleteBehavior.Restrict);
             builder.Entity<GameDiscipline>().HasOne<GameDiscipline>().WithMany().HasForeignKey(c => c.ParentId).OnDelete(DeleteBehavior.Restrict);
+            builder.Entity<RarityRevision>().HasOne<ItemRarity>().WithMany().HasForeignKey(r => r.RarityId).OnDelete(DeleteBehavior.Restrict);
+            builder.Entity<RarityRevision>().HasIndex(r => new { r.RarityId, r.Version }).IsUnique();
+            builder.Entity<Item>().HasOne<ItemRarity>().WithMany().HasForeignKey(i => i.RarityId).OnDelete(DeleteBehavior.Restrict);
             builder.Entity<PatchRevision>().HasOne<GamePatch>().WithMany().HasForeignKey(r => r.PatchId).OnDelete(DeleteBehavior.Restrict);
             builder.Entity<PatchRevision>().HasIndex(r => new { r.PatchId, r.Version }).IsUnique();
             builder.Entity<Spell>().HasOne<GamePatch>().WithMany().HasForeignKey(s => s.PatchId).OnDelete(DeleteBehavior.Restrict);

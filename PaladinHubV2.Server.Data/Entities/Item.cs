@@ -10,6 +10,7 @@ namespace PaladinHubV2.Server.Data.Entities
 		public int? CategoryId { get; set; }
         public int? DisciplineId { get; set; }
         public int? PatchId { get; set; }
+        public int? RarityId { get; set; }
         [MaxLength(100)] public int[] TagIds { get; set; } = [];
 
 		[Required]

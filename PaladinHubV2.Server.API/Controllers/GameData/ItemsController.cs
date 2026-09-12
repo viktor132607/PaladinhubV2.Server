@@ -45,6 +45,10 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
                 return BadRequest(new { message = "Choose an active class or specialization." });
             if (!await CategoryRules.CanAssignPatchAsync(_db, item.PatchId, null, cancellationToken))
                 return BadRequest(new { message = "Select an active patch." });
+            var rarity = item.RarityId is null ? null : await _db.ItemRarities.SingleOrDefaultAsync(r => r.Id == item.RarityId, cancellationToken);
+            if (item.RarityId is not null && (rarity is null || rarity.IsDeleted || (rarity.IsArchived && item.RarityId != null)))
+                return BadRequest(new { message = "Choose an active rarity." });
+            item.Quality = rarity?.Name;
             item.TagIds = (item.TagIds ?? []).Distinct().ToArray();
             if (!await CategoryRules.CanAssignTagsAsync(_db, item.TagIds, [], cancellationToken))
                 return BadRequest(new { message = "Choose existing active tags (up to 100)." });
@@ -139,6 +143,11 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
             if (!await CategoryRules.CanAssignPatchAsync(_db, item.PatchId, existing.PatchId, cancellationToken))
                 return BadRequest(new { message = "Select an active patch." });
             existing.PatchId = item.PatchId;
+            var rarity = item.RarityId is null ? null : await _db.ItemRarities.SingleOrDefaultAsync(r => r.Id == item.RarityId, cancellationToken);
+            if (item.RarityId is not null && (rarity is null || rarity.IsDeleted || (rarity.IsArchived && item.RarityId != existing.RarityId)))
+                return BadRequest(new { message = "Choose an active rarity." });
+            item.Quality = rarity?.Name;
+            existing.RarityId = item.RarityId;
             item.TagIds = (item.TagIds ?? []).Distinct().ToArray();
             if (!await CategoryRules.CanAssignTagsAsync(_db, item.TagIds, existing.TagIds, cancellationToken))
                 return BadRequest(new { message = "Choose existing active tags (up to 100)." });
