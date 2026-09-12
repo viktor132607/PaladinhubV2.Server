@@ -19,6 +19,7 @@ using PaladinHubV2.Server.Domain.Services;
 using PaladinHubV2.Server.Domain.Services.Accounts;
 using PaladinHubV2.Server.Domain.Services.Avatars;
 using PaladinHubV2.Server.Domain.Services.Carts;
+using PaladinHubV2.Server.Domain.Services.Checkout;
 using PaladinHubV2.Server.Domain.Services.Discussions;
 using PaladinHubV2.Server.Domain.Services.ItemsService;
 using PaladinHubV2.Server.Domain.Services.PageBuilder;
@@ -321,6 +322,18 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 			services.AddScoped<
 				ICartSessionService,
 				CartSessionService>();
+
+			services.AddScoped<
+				ICheckoutSessionService,
+				CheckoutSessionService>();
+
+			services.AddScoped<
+				ICheckoutOrderService,
+				CheckoutOrderService>();
+
+			services.AddScoped<
+				ICheckoutCardPaymentService,
+				CheckoutCardPaymentService>();
 
 			services.AddScoped<
 				ICartStore,
