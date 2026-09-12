@@ -1,13 +1,9 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
+using PaladinHub.Areas.Admin.Models;
 using PaladinHubV2.Server.Data;
 using PaladinHubV2.Server.Data.Entities;
+using PaladinHubV2.Server.Domain.Services.PageBuilder;
 
 namespace PaladinHubV2.Server.API.Controllers.Content.PageBuilder
 {
@@ -16,69 +12,27 @@ namespace PaladinHubV2.Server.API.Controllers.Content.PageBuilder
 	[Route("Admin/api/page-builder/pages")]
 	public sealed class PageManagementController : ControllerBase
 	{
-		private static readonly HashSet<string> ReservedRoutes = new(
-			StringComparer.OrdinalIgnoreCase)
-		{
-			"holy/overview",
-			"holy/gear",
-			"holy/talents",
-			"holy/consumables",
-			"holy/rotation",
-			"holy/stats",
-			"protection/overview",
-			"protection/gear",
-			"protection/talents",
-			"protection/consumables",
-			"protection/rotation",
-			"protection/stats",
-			"retribution/overview",
-			"retribution/gear",
-			"retribution/talents",
-			"retribution/consumables",
-			"retribution/rotation",
-			"retribution/stats"
-		};
-
-		private readonly AppDbContext _db;
+		private readonly PageManagementService _pages;
 
 		public PageManagementController(AppDbContext db)
 		{
-			_db = db;
-		}
-
-		public sealed class SavePageRequest
-		{
-			public string? Section { get; init; }
-			public string? Title { get; init; }
-			public string? Slug { get; init; }
-			public bool IsPublished { get; init; } = true;
+			_pages = new PageManagementService(db);
 		}
 
 		[HttpGet]
-		[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
-		public async Task<IActionResult> List(CancellationToken ct)
+		[ResponseCache(
+			NoStore = true,
+			Location = ResponseCacheLocation.None)]
+		public async Task<IActionResult> List(
+			CancellationToken cancellationToken)
 		{
-			var pages = await _db.ContentPages
-				.AsNoTracking()
-				.OrderBy(page => page.Section)
-				.ThenBy(page => page.Title)
-				.Select(page => new
-				{
-					page.Id,
-					page.Section,
-					page.Title,
-					page.Slug,
-					page.IsPublished,
-					page.CreatedAt,
-					page.UpdatedAt,
-					page.UpdatedBy
-				})
-				.ToListAsync(ct);
+			List<ContentPage> pages =
+				await _pages.ListAsync(cancellationToken);
 
 			return Ok(pages.Select(page => new
 			{
 				id = page.Id,
-				section = Capitalize(page.Section),
+				section = PageManagementService.Capitalize(page.Section),
 				title = page.Title,
 				slug = page.Slug,
 				isPublished = page.IsPublished,
@@ -89,12 +43,15 @@ namespace PaladinHubV2.Server.API.Controllers.Content.PageBuilder
 		}
 
 		[HttpGet("{id:int}")]
-		[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
-		public async Task<IActionResult> Get(int id, CancellationToken ct)
+		[ResponseCache(
+			NoStore = true,
+			Location = ResponseCacheLocation.None)]
+		public async Task<IActionResult> Get(
+			int id,
+			CancellationToken cancellationToken)
 		{
-			var page = await _db.ContentPages
-				.AsNoTracking()
-				.FirstOrDefaultAsync(candidate => candidate.Id == id, ct);
+			ContentPage? page =
+				await _pages.GetAsync(id, cancellationToken);
 
 			return page == null
 				? NotFound(new { message = "Page not found." })
@@ -105,55 +62,33 @@ namespace PaladinHubV2.Server.API.Controllers.Content.PageBuilder
 		[ValidateAntiForgeryToken]
 		public async Task<IActionResult> Create(
 			[FromBody] SavePageRequest request,
-			CancellationToken ct)
+			CancellationToken cancellationToken)
 		{
-			var validation = ValidateRequest(request);
+			string? validation = _pages.ValidateRequest(request);
+
 			if (validation != null)
 			{
 				return BadRequest(new { message = validation });
 			}
 
-			var section = NormalizeSection(request.Section!);
-			var slug = Slugify(request.Slug!);
+			PageManagementResult result = await _pages.CreateAsync(
+				request,
+				User.Identity?.Name ?? "admin",
+				cancellationToken);
 
-			if (IsReserved(section, slug))
+			IActionResult? error = MapMutationError(result.Error);
+
+			if (error != null)
 			{
-				return Conflict(new
-				{
-					message = "This route belongs to a hardcoded page and cannot be replaced from Page Builder."
-				});
+				return error;
 			}
 
-			var exists = await _db.ContentPages.AnyAsync(
-				page => page.Section == section && page.Slug == slug,
-				ct);
+			ContentPage page = result.Page!;
 
-			if (exists)
-			{
-				return Conflict(new
-				{
-					message = "Slug is already used in this section."
-				});
-			}
-
-			var now = DateTime.UtcNow;
-			var page = new ContentPage
-			{
-				Section = section,
-				Title = request.Title!.Trim(),
-				Slug = slug,
-				IsPublished = request.IsPublished,
-				JsonLayout = "[]",
-				CreatedAt = now,
-				UpdatedAt = now,
-				UpdatedBy = User.Identity?.Name ?? "admin",
-				RowVersion = Array.Empty<byte>()
-			};
-
-			_db.ContentPages.Add(page);
-			await _db.SaveChangesAsync(ct);
-
-			return CreatedAtAction(nameof(Get), new { id = page.Id }, ToResponse(page));
+			return CreatedAtAction(
+				nameof(Get),
+				new { id = page.Id },
+				ToResponse(page));
 		}
 
 		[HttpPut("{id:int}")]
@@ -161,180 +96,87 @@ namespace PaladinHubV2.Server.API.Controllers.Content.PageBuilder
 		public async Task<IActionResult> Update(
 			int id,
 			[FromBody] SavePageRequest request,
-			CancellationToken ct)
+			CancellationToken cancellationToken)
 		{
-			var validation = ValidateRequest(request);
+			string? validation = _pages.ValidateRequest(request);
+
 			if (validation != null)
 			{
 				return BadRequest(new { message = validation });
 			}
 
-			var page = await _db.ContentPages
-				.FirstOrDefaultAsync(candidate => candidate.Id == id, ct);
+			PageManagementResult result = await _pages.UpdateAsync(
+				id,
+				request,
+				User.Identity?.Name ?? "admin",
+				cancellationToken);
 
-			if (page == null)
+			IActionResult? error = MapMutationError(result.Error);
+
+			if (error != null)
 			{
-				return NotFound(new { message = "Page not found." });
+				return error;
 			}
 
-			var section = NormalizeSection(request.Section!);
-			var slug = Slugify(request.Slug!);
-
-			if (IsReserved(section, slug))
-			{
-				return Conflict(new
-				{
-					message = "This route belongs to a hardcoded page and cannot be replaced from Page Builder."
-				});
-			}
-
-			var exists = await _db.ContentPages.AnyAsync(
-				candidate =>
-					candidate.Id != id &&
-					candidate.Section == section &&
-					candidate.Slug == slug,
-				ct);
-
-			if (exists)
-			{
-				return Conflict(new
-				{
-					message = "Slug is already used in this section."
-				});
-			}
-
-			page.Section = section;
-			page.Title = request.Title!.Trim();
-			page.Slug = slug;
-			page.IsPublished = request.IsPublished;
-			page.UpdatedAt = DateTime.UtcNow;
-			page.UpdatedBy = User.Identity?.Name ?? "admin";
-
-			try
-			{
-				await _db.SaveChangesAsync(ct);
-			}
-			catch (DbUpdateConcurrencyException)
-			{
-				return Conflict(new
-				{
-					message = "The page changed while you were editing it. Reload and try again."
-				});
-			}
-
-			return Ok(ToResponse(page));
+			return Ok(ToResponse(result.Page!));
 		}
 
 		[HttpDelete("{id:int}")]
 		[ValidateAntiForgeryToken]
-		public async Task<IActionResult> Delete(int id, CancellationToken ct)
+		public async Task<IActionResult> Delete(
+			int id,
+			CancellationToken cancellationToken)
 		{
-			var page = await _db.ContentPages
-				.FirstOrDefaultAsync(candidate => candidate.Id == id, ct);
+			bool deleted =
+				await _pages.DeleteAsync(id, cancellationToken);
 
-			if (page == null)
+			if (!deleted)
 			{
-				return NotFound(new { message = "Page not found." });
+				return NotFound(new
+				{
+					message = "Page not found."
+				});
 			}
 
-			_db.ContentPages.Remove(page);
-			await _db.SaveChangesAsync(ct);
 			return NoContent();
 		}
 
-		private static string? ValidateRequest(SavePageRequest request)
+		private IActionResult? MapMutationError(
+			PageManagementError error)
 		{
-			if (request == null)
+			return error switch
 			{
-				return "Request body is required.";
-			}
-
-			if (!TryNormalizeSection(request.Section, out _))
-			{
-				return "Section must be Holy, Protection, or Retribution.";
-			}
-
-			if (string.IsNullOrWhiteSpace(request.Title))
-			{
-				return "Page title is required.";
-			}
-
-			if (request.Title.Trim().Length > 200)
-			{
-				return "Page title cannot exceed 200 characters.";
-			}
-
-			if (string.IsNullOrWhiteSpace(request.Slug))
-			{
-				return "Slug is required.";
-			}
-
-			if (Slugify(request.Slug).Length > 100)
-			{
-				return "Slug cannot exceed 100 characters.";
-			}
-
-			return null;
-		}
-
-		private static bool TryNormalizeSection(string? value, out string section)
-		{
-			section = (value ?? string.Empty).Trim().ToLowerInvariant() switch
-			{
-				"holy" => "holy",
-				"protection" or "prot" => "protection",
-				"retribution" or "retri" or "ret" => "retribution",
-				_ => string.Empty
-			};
-
-			return section.Length > 0;
-		}
-
-		private static string NormalizeSection(string value)
-		{
-			TryNormalizeSection(value, out var section);
-			return section;
-		}
-
-		private static string Slugify(string value)
-		{
-			var output = new List<char>();
-			var pendingDash = false;
-
-			foreach (var character in value.Trim().ToLowerInvariant())
-			{
-				if (char.IsLetterOrDigit(character))
-				{
-					if (pendingDash && output.Count > 0)
+				PageManagementError.None => null,
+				PageManagementError.NotFound =>
+					NotFound(new { message = "Page not found." }),
+				PageManagementError.ReservedRoute =>
+					Conflict(new
 					{
-						output.Add('-');
-					}
-
-					output.Add(character);
-					pendingDash = false;
-				}
-				else if (character == '-' || char.IsWhiteSpace(character))
-				{
-					pendingDash = output.Count > 0;
-				}
-			}
-
-			return new string(output.ToArray()).Trim('-');
+						message =
+							"This route belongs to a hardcoded page and cannot be replaced from Page Builder."
+					}),
+				PageManagementError.SlugConflict =>
+					Conflict(new
+					{
+						message =
+							"Slug is already used in this section."
+					}),
+				PageManagementError.ConcurrencyConflict =>
+					Conflict(new
+					{
+						message =
+							"The page changed while you were editing it. Reload and try again."
+					}),
+				_ => Conflict()
+			};
 		}
-
-		private static bool IsReserved(string section, string slug)
-			=> ReservedRoutes.Contains($"{section}/{slug}");
-
-		private static string Capitalize(string value)
-			=> string.IsNullOrWhiteSpace(value)
-				? value
-				: char.ToUpperInvariant(value[0]) + value[1..];
 
 		private static object ToResponse(ContentPage page)
-			=> new
+		{
+			return new
 			{
 				id = page.Id,
-				section = Capitalize(page.Section),
+				section = PageManagementService.Capitalize(page.Section),
 				title = page.Title,
 				slug = page.Slug,
 				isPublished = page.IsPublished,
@@ -342,7 +184,9 @@ namespace PaladinHubV2.Server.API.Controllers.Content.PageBuilder
 				createdAt = page.CreatedAt,
 				updatedAt = page.UpdatedAt,
 				updatedBy = page.UpdatedBy,
-				rowVersionBase64 = Convert.ToBase64String(page.RowVersion ?? Array.Empty<byte>())
+				rowVersionBase64 = Convert.ToBase64String(
+					page.RowVersion ?? Array.Empty<byte>())
 			};
+		}
 	}
 }
