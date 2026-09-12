@@ -1,10 +1,5 @@
-using System;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using PaladinHubV2.Server.Data;
 using PaladinHubV2.Server.Data.Entities;
 using PaladinHubV2.Server.Domain.Services.Promos;
@@ -16,15 +11,15 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 	[Route("Admin/api/promo-codes")]
 	public sealed class PromoCodesController : ControllerBase
 	{
-		private readonly AppDbContext _db;
-		private readonly IPromoCodeService _promoCodes;
+		private readonly PromoCodeAdminService _promoCodes;
 
 		public PromoCodesController(
 			AppDbContext db,
 			IPromoCodeService promoCodes)
 		{
-			_db = db;
-			_promoCodes = promoCodes;
+			_promoCodes = new PromoCodeAdminService(
+				db,
+				promoCodes);
 		}
 
 		[HttpGet]
@@ -34,10 +29,8 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 		public async Task<IActionResult> Index(
 			CancellationToken cancellationToken)
 		{
-			var promoCodes = await _db.PromoCodes
-				.AsNoTracking()
-				.OrderByDescending(promo => promo.CreatedAtUtc)
-				.ToListAsync(cancellationToken);
+			List<PromoCode> promoCodes =
+				await _promoCodes.ListAsync(cancellationToken);
 
 			return Ok(promoCodes);
 		}
@@ -46,13 +39,7 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 		[HttpGet("~/Admin/PromoCodes/Create")]
 		public IActionResult Create()
 		{
-			return Ok(new PromoCode
-			{
-				Type = PromoCodeType.Balance,
-				Value = 5m,
-				Currency = "EUR",
-				IsActive = true
-			});
+			return Ok(PromoCodeAdminService.BuildCreateModel());
 		}
 
 		[HttpPost]
@@ -101,87 +88,26 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 				});
 			}
 
-			model.Code = model.Code?.Trim().ToUpperInvariant()
-				?? string.Empty;
+			PromoCreateResult result =
+				await _promoCodes.CreateAsync(
+					model,
+					cancellationToken);
 
-			model.Currency = NormalizeOptional(model.Currency)?
-				.ToUpperInvariant();
+			if (result.Error == PromoCreateError.Validation)
+			{
+				foreach (
+					PromoValidationError error in
+					result.ValidationErrors ?? [])
+				{
+					ModelState.AddModelError(
+						error.Field,
+						error.Message);
+				}
 
-			model.Notes = NormalizeOptional(model.Notes);
-
-			if (string.IsNullOrWhiteSpace(model.Code))
-			{
-				ModelState.AddModelError(
-					nameof(model.Code),
-					"Code is required.");
-			}
-			else if (model.Code.Length > 64)
-			{
-				ModelState.AddModelError(
-					nameof(model.Code),
-					"Code cannot exceed 64 characters.");
-			}
-
-			if (!Enum.IsDefined(typeof(PromoCodeType), model.Type))
-			{
-				ModelState.AddModelError(
-					nameof(model.Type),
-					"Invalid promo code type.");
-			}
-
-			if (model.Value <= 0m)
-			{
-				ModelState.AddModelError(
-					nameof(model.Value),
-					"Value must be greater than zero.");
-			}
-
-			if (model.Type == PromoCodeType.DiscountPercent &&
-				model.Value > 100m)
-			{
-				ModelState.AddModelError(
-					nameof(model.Value),
-					"A percentage discount cannot exceed 100.");
-			}
-
-			if (model.Type == PromoCodeType.DiscountPercent)
-			{
-				model.Currency = null;
-			}
-			else if (model.Currency?.Length > 3)
-			{
-				ModelState.AddModelError(
-					nameof(model.Currency),
-					"Currency cannot exceed 3 characters.");
-			}
-
-			if (model.MaxUses.HasValue &&
-				model.MaxUses.Value <= 0)
-			{
-				ModelState.AddModelError(
-					nameof(model.MaxUses),
-					"Max Uses must be greater than zero.");
-			}
-
-			if (model.Notes?.Length > 256)
-			{
-				ModelState.AddModelError(
-					nameof(model.Notes),
-					"Notes cannot exceed 256 characters.");
-			}
-
-			if (!ModelState.IsValid)
-			{
 				return ValidationProblem(ModelState);
 			}
 
-			var codeExists = await _db.PromoCodes
-				.AsNoTracking()
-				.AnyAsync(
-					promo => promo.Code == model.Code,
-					cancellationToken);
-
-			if (codeExists)
+			if (result.Error == PromoCreateError.Duplicate)
 			{
 				return Conflict(new
 				{
@@ -189,28 +115,12 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 				});
 			}
 
-			model.Id = Guid.NewGuid().ToString("N");
-			model.UsedCount = 0;
-			model.IsActive = true;
-			model.CreatedAtUtc = DateTime.UtcNow;
+			PromoCode created = result.PromoCode!;
 
-			try
-			{
-				var created =
-					await _promoCodes.CreateAsync(model);
-
-				return CreatedAtAction(
-					nameof(Index),
-					new { id = created.Id },
-					created);
-			}
-			catch (DbUpdateException)
-			{
-				return Conflict(new
-				{
-					message = "Promo code already exists."
-				});
-			}
+			return CreatedAtAction(
+				nameof(Index),
+				new { id = created.Id },
+				created);
 		}
 
 		private async Task<IActionResult> DeactivateCore(
@@ -224,9 +134,9 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 				});
 			}
 
-			var normalizedId = id.Trim();
+			string normalizedId = id.Trim();
 
-			var deactivated =
+			bool deactivated =
 				await _promoCodes.DeactivateAsync(normalizedId);
 
 			if (!deactivated)
@@ -244,14 +154,6 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 				isActive = false,
 				message = "Promo deactivated."
 			});
-		}
-
-		private static string? NormalizeOptional(
-			string? value)
-		{
-			return string.IsNullOrWhiteSpace(value)
-				? null
-				: value.Trim();
 		}
 	}
 }
