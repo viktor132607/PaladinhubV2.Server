@@ -30,5 +30,23 @@ namespace PaladinHubV2.Server.API.Controllers.Errors
 				detail: "An unexpected server error occurred.",
 				instance: HttpContext.Request.Path);
 		}
+
+		[HttpGet("~/Home/Error")]
+		[ResponseCache(
+			Duration = 0,
+			Location = ResponseCacheLocation.None,
+			NoStore = true)]
+		public IActionResult LegacyHomeError()
+		{
+			return Problem(
+				statusCode: StatusCodes.Status500InternalServerError,
+				title: "Internal server error",
+				detail: "An unexpected server error occurred.",
+				instance: HttpContext.Request.Path,
+				extensions: new Dictionary<string, object?>
+				{
+					["requestId"] = HttpContext.TraceIdentifier
+				});
+		}
 	}
 }

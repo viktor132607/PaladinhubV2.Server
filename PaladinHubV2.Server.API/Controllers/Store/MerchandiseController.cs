@@ -7,22 +7,24 @@ using PaladinHubV2.Server.Domain.Services.Products;
 namespace PaladinHubV2.Server.API.Controllers.Store
 {
 	[ApiController]
-	[AllowAnonymous]
 	[Route("api/merchandise")]
 	[Route("Merchandise")]
 	public sealed class MerchandiseController : ControllerBase
 	{
 		private readonly MerchandiseService _merchandise;
+		private readonly IProductService _productService;
 
 		public MerchandiseController(
 			IProductService productService,
 			AppDbContext db)
 		{
+			_productService = productService;
 			_merchandise = new MerchandiseService(
 				productService,
 				db);
 		}
 
+		[AllowAnonymous]
 		[HttpGet]
 		[ResponseCache(
 			NoStore = true,
@@ -34,6 +36,7 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 			return Merchandise(options, cancellationToken);
 		}
 
+		[AllowAnonymous]
 		[HttpGet("List")]
 		[ResponseCache(
 			NoStore = true,
@@ -48,6 +51,26 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 					cancellationToken);
 
 			return Ok(model);
+		}
+
+		[AllowAnonymous]
+		[HttpGet("~/Home/Merchandise")]
+		public async Task<IActionResult> LegacyMerchandise()
+		{
+			ICollection<ProductViewModel> products =
+				await _productService.GetAll();
+
+			return Ok(products);
+		}
+
+		[Authorize]
+		[HttpGet("~/Home/IndexLoggedIn")]
+		public async Task<IActionResult> IndexLoggedIn()
+		{
+			ICollection<ProductViewModel> products =
+				await _productService.GetAll();
+
+			return Ok(products);
 		}
 	}
 }

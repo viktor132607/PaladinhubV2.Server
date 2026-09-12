@@ -18,15 +18,9 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 		{
 			return Ok(new
 			{
-				orderId =
-					orderId?.Trim() ??
-					string.Empty,
-
-				status =
-					"registered",
-
-				message =
-					"Your order was registered successfully."
+				orderId = orderId?.Trim() ?? string.Empty,
+				status = "registered",
+				message = "Your order was registered successfully."
 			});
 		}
 
@@ -39,15 +33,9 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 		{
 			return Ok(new
 			{
-				orderId =
-					orderId?.Trim() ??
-					string.Empty,
-
-				status =
-					"success",
-
-				message =
-					"Payment completed successfully."
+				orderId = orderId?.Trim() ?? string.Empty,
+				status = "success",
+				message = "Payment completed successfully."
 			});
 		}
 
@@ -61,11 +49,19 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 			return Ok(new
 			{
 				status = "failure",
+				message = string.IsNullOrWhiteSpace(message)
+					? "Payment failed."
+					: message.Trim()
+			});
+		}
 
-				message =
-					string.IsNullOrWhiteSpace(message)
-						? "Payment failed."
-						: message.Trim()
+		[HttpGet("~/Home/ThanksForPurchasing")]
+		public IActionResult ThanksForPurchasing()
+		{
+			return Ok(new
+			{
+				message = "Thank you for your purchase.",
+				frontendRoute = "/checkout/ThanksForPurchasing"
 			});
 		}
 	}
