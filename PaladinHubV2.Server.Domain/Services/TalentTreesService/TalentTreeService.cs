@@ -1,4 +1,4 @@
-﻿using PaladinHubV2.Server.Data.Entities;
+using PaladinHubV2.Server.Data.Entities;
 using PaladinHub.Models.Talents;
 
 namespace PaladinHubV2.Server.Domain.Services.TalentTrees
@@ -74,6 +74,62 @@ namespace PaladinHubV2.Server.Domain.Services.TalentTrees
 				.Where(n => !string.IsNullOrWhiteSpace(n.Id))
 				.ToDictionary(n => n.Id!, n => n.Active, StringComparer.OrdinalIgnoreCase);
 			await _adminStates.SaveStatesAsync(key, dict);
+		}
+
+		public async Task<TalentTreeSaveResult> ValidateAndSaveActiveStatesAsync(
+			string? routeKey,
+			SaveTreeRequest? request)
+		{
+			string? normalizedKey = routeKey?.Trim();
+			if (string.IsNullOrWhiteSpace(normalizedKey))
+			{
+				return new TalentTreeSaveResult(TalentTreeSaveError.KeyRequired);
+			}
+
+			if (request == null)
+			{
+				return new TalentTreeSaveResult(TalentTreeSaveError.DataRequired);
+			}
+
+			string? requestKey = request.Key?.Trim();
+			if (!string.Equals(
+				normalizedKey,
+				requestKey,
+				StringComparison.OrdinalIgnoreCase))
+			{
+				return new TalentTreeSaveResult(TalentTreeSaveError.KeyMismatch);
+			}
+
+			if (request.Nodes == null)
+			{
+				return new TalentTreeSaveResult(TalentTreeSaveError.NodesRequired);
+			}
+
+			if (request.Nodes.Any(node =>
+				node == null ||
+				string.IsNullOrWhiteSpace(node.Id)))
+			{
+				return new TalentTreeSaveResult(TalentTreeSaveError.InvalidNode);
+			}
+
+			List<NodeState> normalizedNodes = request.Nodes
+				.Select(node => new NodeState(node.Id.Trim(), node.Active))
+				.ToList();
+
+			string? duplicateNodeId = normalizedNodes
+				.GroupBy(node => node.Id, StringComparer.OrdinalIgnoreCase)
+				.FirstOrDefault(group => group.Count() > 1)
+				?.Key;
+
+			if (duplicateNodeId != null)
+			{
+				return new TalentTreeSaveResult(
+					TalentTreeSaveError.DuplicateNode,
+					duplicateNodeId);
+			}
+
+			await SaveActiveStatesAsync(normalizedKey, normalizedNodes);
+			return new TalentTreeSaveResult(TalentTreeSaveError.None);
 		}
 
 		private static string Normalize(string s)
