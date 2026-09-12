@@ -1,15 +1,8 @@
-using System;
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using PaladinHub.Models;
-using PaladinHub.Models.PageBuilder;
-using PaladinHubV2.Server.Domain.Services.ItemsService;
-using PaladinHubV2.Server.Domain.Services.PageBuilder;
 using PaladinHubV2.Server.Domain.Services.SectionServices;
-using PaladinHubV2.Server.Domain.Services.SpellbookService;
-using PaladinHubV2.Server.Domain.Services.TalentTrees;
 
 namespace PaladinHubV2.Server.API.Controllers.Content.Paladin
 {
@@ -20,33 +13,12 @@ namespace PaladinHubV2.Server.API.Controllers.Content.Paladin
 		private const string CurrentSectionSessionKey =
 			"current-section";
 
-		private readonly ISpellbookService _spellbookService;
-		private readonly IItemsService _itemsService;
-		private readonly HolySectionService _holyService;
-		private readonly ProtectionSectionService _protectionService;
-		private readonly RetributionSectionService _retributionService;
-		private readonly IPageService _pages;
-		private readonly ITalentTreeService _talentTrees;
-		private readonly IBlockRenderer _blockRenderer;
+		private readonly PaladinContentService _content;
 
 		public PaladinController(
-			ISpellbookService spellbookService,
-			IItemsService itemsService,
-			HolySectionService holyService,
-			ProtectionSectionService protectionService,
-			RetributionSectionService retributionService,
-			IPageService pages,
-			ITalentTreeService talentTrees,
-			IBlockRenderer blockRenderer)
+			PaladinContentService content)
 		{
-			_spellbookService = spellbookService;
-			_itemsService = itemsService;
-			_holyService = holyService;
-			_protectionService = protectionService;
-			_retributionService = retributionService;
-			_pages = pages;
-			_talentTrees = talentTrees;
-			_blockRenderer = blockRenderer;
+			_content = content;
 		}
 
 		[AllowAnonymous]
@@ -115,96 +87,15 @@ namespace PaladinHubV2.Server.API.Controllers.Content.Paladin
 			[FromRoute] string section)
 		{
 			string normalizedSection =
-				NormalizeSection(section);
-
-			CombinedViewModel model =
-				await BuildCombinedModel(
-					normalizedSection,
-					nameof(Talents));
-
-			model.TalentTrees =
-				await _talentTrees.GetTalentTrees(
-					normalizedSection,
-					model.Spells);
-
-			return Ok(model);
-		}
-
-		[AllowAnonymous]
-		[HttpGet("{section:palsec}/{slug}")]
-		[ResponseCache(
-			NoStore = true,
-			Location = ResponseCacheLocation.None)]
-		public async Task<IActionResult> Page(
-			[FromRoute] string section,
-			[FromRoute] string slug)
-		{
-			if (string.IsNullOrWhiteSpace(slug))
-			{
-				return BadRequest(new
-				{
-					message = "Page slug is required."
-				});
-			}
-
-			string normalizedSection =
-				NormalizeSection(section);
-
-			string normalizedSlug =
-				slug.Trim().ToLowerInvariant();
-
-			var page = await _pages.GetByRouteAsync(
-				normalizedSection,
-				normalizedSlug);
-
-			if (page == null || !page.IsPublished)
-			{
-				return NotFound(new
-				{
-					message = "Page not found."
-				});
-			}
+				PaladinContentService.NormalizeSection(section);
 
 			RememberSection(normalizedSection);
 
-			BaseSectionService sectionService =
-				ResolveSectionService(normalizedSection);
+			CombinedViewModel model =
+				await _content.BuildTalentsModelAsync(
+					normalizedSection);
 
-			var model = new ContentPageViewModel
-			{
-				Id = page.Id,
-				Section = sectionService.ControllerName,
-				Slug = page.Slug,
-				Title = page.Title,
-				JsonLayout = page.JsonLayout,
-				IsPublished = page.IsPublished,
-				UpdatedAt = page.UpdatedAt,
-				UpdatedBy = page.UpdatedBy,
-
-				RowVersionBase64 =
-					Convert.ToBase64String(
-						page.RowVersion ??
-						Array.Empty<byte>())
-			};
-
-			string html = string.Empty;
-			string? renderError = null;
-
-			try
-			{
-				html = await _blockRenderer.RenderAsync(
-					page.JsonLayout);
-			}
-			catch (Exception exception)
-			{
-				renderError = exception.Message;
-			}
-
-			return Ok(new ContentPageResponse(
-				model,
-				html,
-				User.IsInRole("Admin"),
-				renderError));
+			return Ok(model);
 		}
 
 		private async Task<IActionResult> GetSectionPage(
@@ -212,79 +103,16 @@ namespace PaladinHubV2.Server.API.Controllers.Content.Paladin
 			string actionName)
 		{
 			string normalizedSection =
-				NormalizeSection(section);
+				PaladinContentService.NormalizeSection(section);
+
+			RememberSection(normalizedSection);
 
 			CombinedViewModel model =
-				await BuildCombinedModel(
+				await _content.BuildSectionModelAsync(
 					normalizedSection,
 					actionName);
 
 			return Ok(model);
-		}
-
-		private async Task<CombinedViewModel> BuildCombinedModel(
-			string normalizedSection,
-			string actionName)
-		{
-			RememberSection(normalizedSection);
-
-			BaseSectionService sectionService =
-				ResolveSectionService(normalizedSection);
-
-			/*
-			 * Извикванията са последователни нарочно.
-			 * Двете услуги може да използват един и същ scoped
-			 * AppDbContext, който не поддържа паралелни операции.
-			 */
-			var spells =
-				await _spellbookService.GetAllAsync();
-
-			var items =
-				await _itemsService.GetAllAsync();
-
-			return new CombinedViewModel
-			{
-				Section = sectionService.ControllerName,
-				Spells = spells,
-				Items = items,
-
-				PageTitle =
-					sectionService.GetPageTitle(actionName),
-
-				PageText =
-					sectionService.GetPageText(actionName),
-
-				CoverImage =
-					sectionService.GetCoverImage(),
-
-				CurrentSectionButtons =
-					sectionService.GetCurrentSectionButtons(
-						actionName),
-
-				OtherSectionButtons =
-					sectionService.GetOtherSectionButtons()
-			};
-		}
-
-		private BaseSectionService ResolveSectionService(
-			string normalizedSection)
-		{
-			return normalizedSection switch
-			{
-				"holy" =>
-					_holyService,
-
-				"protection" =>
-					_protectionService,
-
-				"retribution" =>
-					_retributionService,
-
-				_ => throw new ArgumentOutOfRangeException(
-					nameof(normalizedSection),
-					normalizedSection,
-					"Unsupported paladin section.")
-			};
 		}
 
 		private void RememberSection(
@@ -294,33 +122,5 @@ namespace PaladinHubV2.Server.API.Controllers.Content.Paladin
 				CurrentSectionSessionKey,
 				normalizedSection);
 		}
-
-		private static string NormalizeSection(
-			string? section)
-		{
-			return section?
-				.Trim()
-				.ToLowerInvariant() switch
-			{
-				"holy" =>
-					"holy",
-
-				"protection" or "prot" =>
-					"protection",
-
-				"retribution" or "retri" or "ret" =>
-					"retribution",
-
-				_ => throw new ArgumentException(
-					"Unsupported paladin section.",
-					nameof(section))
-			};
-		}
-
-		public sealed record ContentPageResponse(
-			ContentPageViewModel Page,
-			string Html,
-			bool CanEdit,
-			string? RenderError);
 	}
 }
