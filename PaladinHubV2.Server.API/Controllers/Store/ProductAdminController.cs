@@ -16,11 +16,11 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 		private readonly IProductAdminFormService _formService;
 
 		public ProductAdminController(
-			IProductService productService,
-			IProductAdminFormService formService)
+			IProductService productService)
 		{
 			_productService = productService;
-			_formService = formService;
+			_formService =
+				new ProductAdminFormService(productService);
 		}
 
 		[HttpGet("Create")]
