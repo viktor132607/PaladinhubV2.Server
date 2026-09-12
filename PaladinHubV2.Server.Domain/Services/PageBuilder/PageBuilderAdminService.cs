@@ -74,7 +74,7 @@ namespace PaladinHubV2.Server.Domain.Services.PageBuilder
 
 			string normalizedSlug = Slugify(rawSlug);
 
-			bool exists = await _db.ContentPages.AnyAsync(
+			bool exists = await _db.ContentPages.IgnoreQueryFilters().AnyAsync(
 				page =>
 					page.Section == normalizedSection &&
 					page.Slug == normalizedSlug,

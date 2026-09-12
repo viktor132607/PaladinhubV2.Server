@@ -54,3 +54,19 @@ foreach (var href in new[] { "/Holy/Overview", "https://example.com/path", "http
 foreach (var href in new[] { "javascript:alert(1)", "//evil.test", "/\\evil.test", "data:text/html,hi", "\nhttps://example.com", "" })
     if ((bool)safeHref.Invoke(null, new object?[] { href })!) throw new Exception("Unsafe link accepted");
 Console.WriteLine("PASS: navigation schema, auth/CSRF, URL protocol and control-character validation.");
+
+// Verify audit state transitions without opening a database connection.
+using (var auditDb = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql("Host=127.0.0.1;Database=unused;Username=unused").Options))
+{
+    var prepare = typeof(AppDbContext).GetMethod("UpdateContentPageRowVersions",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic)!;
+    var page = new ContentPage { Id=100, Section="holy",Slug="audit-check",Title="Original",JsonLayout="[]",IsPublished=true };
+    auditDb.AuditActor="test-admin";auditDb.ContentPages.Add(page);prepare.Invoke(auditDb,null);
+    var created=auditDb.ChangeTracker.Entries<PageRevision>().Single().Entity;
+    if(created.Page!=page || created.Version!=1 || created.Actor!="test-admin" || page.RowVersion.Length!=16)throw new Exception("Page creation audit failed");
+    auditDb.ChangeTracker.AcceptAllChanges();var oldVersion=page.RowVersion.ToArray();page.Title="Updated";prepare.Invoke(auditDb,null);
+    if(page.Version!=2 || oldVersion.SequenceEqual(page.RowVersion) || auditDb.ChangeTracker.Entries<PageRevision>().Count()!=2)throw new Exception("Page update audit failed");
+    auditDb.ChangeTracker.AcceptAllChanges();auditDb.ContentPages.Remove(page);prepare.Invoke(auditDb,null);
+    if(auditDb.Entry(page).State!=EntityState.Modified || !page.IsDeleted || !page.IsArchived || page.IsPublished || page.Version!=3)throw new Exception("Recoverable page deletion failed");
+    if(auditDb.Model.FindEntityType(typeof(ContentPage))!.GetQueryFilter() is null)throw new Exception("Page visibility filter missing");
+}
+Console.WriteLine("PASS: page create/update/delete audit, row versions, recovery snapshots and visibility filter.");

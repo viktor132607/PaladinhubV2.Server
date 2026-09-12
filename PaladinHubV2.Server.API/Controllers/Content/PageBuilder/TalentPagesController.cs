@@ -57,7 +57,7 @@ public sealed class TalentPagesController(AppDbContext db, IJsonLayoutValidator 
         var slug=Regex.Replace((string.IsNullOrWhiteSpace(request.Slug)?request.Title:request.Slug).Trim().ToLowerInvariant(),@"[^\p{L}\p{Nd}]+","-").Trim('-');
         if(slug.Length is 0 or >100 || new[]{"overview","gear","talents","consumables","rotation","stats"}.Contains(slug))
             return BadRequest(new {message="Choose a unique slug, different from the existing guide pages."});
-        if(await db.ContentPages.AnyAsync(p=>p.Section==section&&p.Slug==slug))return Conflict(new {message="Slug already exists."});
+        if(await db.ContentPages.IgnoreQueryFilters().AnyAsync(p=>p.Section==section&&p.Slug==slug))return Conflict(new {message="Slug already exists."});
         var page=new ContentPage{Title=request.Title.Trim(),Section=section,Slug=slug,JsonLayout=request.JsonLayout,IsPublished=true,CreatedAt=DateTime.UtcNow,UpdatedAt=DateTime.UtcNow,UpdatedBy=User.Identity?.Name};
         db.ContentPages.Add(page);await db.SaveChangesAsync();
         return Created($"/Admin/api/talent-pages/{page.Id}",Details(page));

@@ -63,6 +63,9 @@ namespace PaladinHubV2.Server.Data
 		public DbSet<TalentBuildNode> TalentBuildNodes =>
 			Set<TalentBuildNode>();
 
+        public string? AuditActor { get; set; }
+        public string? PageAuditAction { get; set; }
+        public DbSet<PageRevision> PageRevisions => Set<PageRevision>();
 		public DbSet<ContentPage> ContentPages =>
 			Set<ContentPage>();
 
@@ -130,39 +133,27 @@ namespace PaladinHubV2.Server.Data
 			ConfigurePromoCodes(builder);
 		}
 
-		public override int SaveChanges()
-		{
-			return SaveChanges(
-				acceptAllChangesOnSuccess: true);
-		}
-
-		public override int SaveChanges(
-			bool acceptAllChangesOnSuccess)
-		{
-			UpdateContentPageRowVersions();
-
-			return base.SaveChanges(
-				acceptAllChangesOnSuccess);
-		}
-
-		public override Task<int> SaveChangesAsync(
-			CancellationToken cancellationToken = default)
-		{
-			return SaveChangesAsync(
-				acceptAllChangesOnSuccess: true,
-				cancellationToken);
-		}
-
-		public override Task<int> SaveChangesAsync(
-			bool acceptAllChangesOnSuccess,
-			CancellationToken cancellationToken = default)
-		{
-			UpdateContentPageRowVersions();
-
-			return base.SaveChangesAsync(
-				acceptAllChangesOnSuccess,
-				cancellationToken);
-		}
+        public override int SaveChanges() => SaveChanges(true);
+        public override int SaveChanges(bool acceptAllChangesOnSuccess)
+        {
+            var hasPages = ChangeTracker.Entries<ContentPage>().Any(e => e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted);
+            using var transaction = hasPages && Database.CurrentTransaction is null ? Database.BeginTransaction() : null;
+            if (hasPages) { Database.ExecuteSqlRaw("SELECT pg_advisory_xact_lock(8820411)"); ValidatePageDeletes(); }
+            UpdateContentPageRowVersions();
+            var result = base.SaveChanges(acceptAllChangesOnSuccess);
+            transaction?.Commit(); return result;
+        }
+        public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) => SaveChangesAsync(true, cancellationToken);
+        public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+        {
+            var hasPages = ChangeTracker.Entries<ContentPage>().Any(e => e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted);
+            await using var transaction = hasPages && Database.CurrentTransaction is null ? await Database.BeginTransactionAsync(cancellationToken) : null;
+            if (hasPages) { await Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock(8820411)", cancellationToken); await ValidatePageDeletesAsync(cancellationToken); }
+            UpdateContentPageRowVersions();
+            var result = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+            if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+            return result;
+        }
 
 		private static void ConfigureItems(
 			ModelBuilder builder)
@@ -656,9 +647,12 @@ namespace PaladinHubV2.Server.Data
 		private static void ConfigurePageBuilder(
 			ModelBuilder builder)
 		{
+            builder.Entity<PageRevision>().HasOne(r => r.Page).WithMany().HasForeignKey(r => r.PageId).OnDelete(DeleteBehavior.ClientNoAction);
+            builder.Entity<PageRevision>().HasIndex(r => new { r.PageId, r.Version }).IsUnique();
 			builder.Entity<ContentPage>(entity =>
 			{
 				entity.ToTable("ContentPages");
+                entity.HasQueryFilter(page => !page.IsDeleted && !page.IsArchived);
 
 				entity.HasKey(page => page.Id);
 
@@ -945,20 +939,33 @@ namespace PaladinHubV2.Server.Data
 			});
 		}
 
-		private void UpdateContentPageRowVersions()
-		{
-			foreach (var entry in ChangeTracker
-						 .Entries<ContentPage>())
-			{
-				if (entry.State != EntityState.Added &&
-					entry.State != EntityState.Modified)
-				{
-					continue;
-				}
-
-				entry.Entity.RowVersion =
-					Guid.NewGuid().ToByteArray();
-			}
-		}
-	}
+        private string[] DeletedPageRoutes() => ChangeTracker.Entries<ContentPage>()
+            .Where(e => e.State == EntityState.Deleted || (e.State == EntityState.Modified && e.Entity.IsDeleted && !e.OriginalValues.GetValue<bool>(nameof(ContentPage.IsDeleted))))
+            .Select(e => "/" + e.Entity.Section.ToLower() + "/" + e.Entity.Slug.ToLower()).ToArray();
+        private void ValidatePageDeletes()
+        {
+            foreach (var route in DeletedPageRoutes()) if (NavigationLinks.Any(n => !n.IsDeleted && n.Href.ToLower().EndsWith(route))) throw new PageInUseException();
+        }
+        private async Task ValidatePageDeletesAsync(CancellationToken ct)
+        {
+            foreach (var route in DeletedPageRoutes()) if (await NavigationLinks.AnyAsync(n => !n.IsDeleted && n.Href.ToLower().EndsWith(route), ct)) throw new PageInUseException();
+        }
+        private void UpdateContentPageRowVersions()
+        {
+            foreach (var entry in ChangeTracker.Entries<ContentPage>().ToList())
+            {
+                if (entry.State is not (EntityState.Added or EntityState.Modified or EntityState.Deleted)) continue;
+                var page = entry.Entity;
+                var action = entry.State == EntityState.Added ? "created" : entry.State == EntityState.Deleted || page.IsDeleted ? "deleted" : PageAuditAction ?? "updated";
+                if (entry.State == EntityState.Deleted) { entry.State = EntityState.Modified; page.IsDeleted = true; page.IsArchived = true; }
+                if (page.IsArchived || page.IsDeleted) page.IsPublished = false;
+                page.Version = entry.State == EntityState.Added ? 1 : entry.OriginalValues.GetValue<int>(nameof(ContentPage.Version)) + 1;
+                page.RowVersion = Guid.NewGuid().ToByteArray(); page.UpdatedAt = DateTime.UtcNow;
+                if (AuditActor is not null) page.UpdatedBy = AuditActor.Length > 100 ? AuditActor[..100] : AuditActor;
+                PageRevisions.Add(new PageRevision { Page = page, Version = page.Version, Action = action,
+                    Actor = AuditActor ?? page.UpdatedBy ?? "system",
+                    Snapshot = System.Text.Json.JsonSerializer.Serialize(new PageSnapshot(page.Section, page.Slug, page.Title, page.IsPublished, page.JsonLayout, page.IsArchived, page.IsDeleted)) });
+            }
+        }
+    }
 }

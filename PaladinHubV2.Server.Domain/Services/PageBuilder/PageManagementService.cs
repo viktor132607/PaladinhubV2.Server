@@ -98,6 +98,7 @@ namespace PaladinHubV2.Server.Domain.Services.PageBuilder
 				return "Slug is required.";
 			}
 
+			if (Slugify(request.Slug).Length == 0) return "Slug must contain letters or numbers.";
 			if (Slugify(request.Slug).Length > 100)
 			{
 				return "Slug cannot exceed 100 characters.";
@@ -120,7 +121,7 @@ namespace PaladinHubV2.Server.Domain.Services.PageBuilder
 					PageManagementError.ReservedRoute);
 			}
 
-			bool exists = await _db.ContentPages.AnyAsync(
+			bool exists = await _db.ContentPages.IgnoreQueryFilters().AnyAsync(
 				page =>
 					page.Section == section &&
 					page.Slug == slug,
@@ -181,7 +182,7 @@ namespace PaladinHubV2.Server.Domain.Services.PageBuilder
 					PageManagementError.ReservedRoute);
 			}
 
-			bool exists = await _db.ContentPages.AnyAsync(
+			bool exists = await _db.ContentPages.IgnoreQueryFilters().AnyAsync(
 				candidate =>
 					candidate.Id != id &&
 					candidate.Section == section &&
@@ -194,6 +195,11 @@ namespace PaladinHubV2.Server.Domain.Services.PageBuilder
 					PageManagementError.SlugConflict);
 			}
 
+            byte[] expected;
+            try { expected = Convert.FromBase64String(request.RowVersionBase64 ?? ""); }
+            catch (FormatException) { return new(PageManagementError.ConcurrencyConflict); }
+            if (expected.Length == 0 || !page.RowVersion.SequenceEqual(expected)) return new(PageManagementError.ConcurrencyConflict);
+            _db.Entry(page).Property(p => p.RowVersion).OriginalValue = expected;
 			page.Section = section;
 			page.Title = request.Title!.Trim();
 			page.Slug = slug;

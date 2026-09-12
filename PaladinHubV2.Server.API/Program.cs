@@ -115,6 +115,15 @@ app.UseSession();
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.Use(async (context, next) => {
+    if (context.User.Identity?.IsAuthenticated == true && context.Request.Method is "POST" or "PUT" or "PATCH" or "DELETE")
+        context.RequestServices.GetRequiredService<AppDbContext>().AuditActor = context.User.Identity.Name ?? "admin";
+    try { await next(); }
+    catch (PaladinHubV2.Server.Data.Entities.PageInUseException error) {
+        context.Response.StatusCode = 409; await context.Response.WriteAsJsonAsync(new { message = error.Message });
+    }
+});
+
 
 app.MapControllers();
 
@@ -352,6 +361,8 @@ static async Task InitializeDatabaseAsync(
     using (var sql = new StreamReader(typeof(Program).Assembly.GetManifestResourceStream("DatabaseUpgrades.Media.sql")!))
         await database.Database.ExecuteSqlRawAsync(await sql.ReadToEndAsync());
     using (var sql = new StreamReader(typeof(Program).Assembly.GetManifestResourceStream("DatabaseUpgrades.Navigation.sql")!))
+        await database.Database.ExecuteSqlRawAsync(await sql.ReadToEndAsync());
+    using (var sql = new StreamReader(typeof(Program).Assembly.GetManifestResourceStream("DatabaseUpgrades.Pages.sql")!))
         await database.Database.ExecuteSqlRawAsync(await sql.ReadToEndAsync());
 	IEnumerable<ISeeder> seeders =
 		scope.ServiceProvider

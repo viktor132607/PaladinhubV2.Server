@@ -38,7 +38,8 @@ namespace PaladinHubV2.Server.API.Controllers.Content.PageBuilder
 				isPublished = page.IsPublished,
 				createdAt = page.CreatedAt,
 				updatedAt = page.UpdatedAt,
-				updatedBy = page.UpdatedBy
+				updatedBy = page.UpdatedBy,
+                rowVersionBase64 = Convert.ToBase64String(page.RowVersion)
 			}));
 		}
 
