@@ -215,18 +215,17 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 				});
 			}
 
-			CheckoutReviewInfo review =
-				await _checkoutOrders.GetReviewAsync(
+			CheckoutCartSnapshot snapshot =
+				await _checkoutOrders.GetCartSnapshotAsync(
 					user,
-					state,
 					cancellationToken);
 
-			state.Total = review.Total;
+			state.Total = snapshot.Total;
 
 			_checkoutSession.SaveState(state);
 
 			if (state.Total <= 0m ||
-				review.Items <= 0)
+				snapshot.Items <= 0)
 			{
 				return BadRequest(new
 				{
@@ -238,14 +237,20 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 				});
 			}
 
+			CheckoutPaymentReview paymentReview =
+				await _checkoutOrders.GetPaymentReviewAsync(
+					user,
+					state,
+					state.Total);
+
 			return Ok(new
 			{
 				shipping = state.Shipping,
 				paymentMethod = state.PaymentMethod,
 				total = state.Total,
-				items = review.Items,
-				walletBalance = review.WalletBalance,
-				paymentError = review.PaymentError,
+				items = snapshot.Items,
+				walletBalance = paymentReview.WalletBalance,
+				paymentError = paymentReview.PaymentError,
 				orderId = state.OrderId
 			});
 		}

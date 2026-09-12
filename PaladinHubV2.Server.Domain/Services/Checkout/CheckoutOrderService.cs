@@ -12,9 +12,7 @@ namespace PaladinHubV2.Server.Domain.Services.Checkout
 		int Items,
 		decimal Total);
 
-	public sealed record CheckoutReviewInfo(
-		int Items,
-		decimal Total,
+	public sealed record CheckoutPaymentReview(
 		decimal? WalletBalance,
 		string? PaymentError);
 
@@ -28,10 +26,10 @@ namespace PaladinHubV2.Server.Domain.Services.Checkout
 			User user,
 			CancellationToken cancellationToken);
 
-		Task<CheckoutReviewInfo> GetReviewAsync(
+		Task<CheckoutPaymentReview> GetPaymentReviewAsync(
 			User user,
 			CheckoutState state,
-			CancellationToken cancellationToken);
+			decimal total);
 
 		Task<bool> OrderTransactionExistsAsync(
 			string userId,
@@ -98,16 +96,11 @@ namespace PaladinHubV2.Server.Domain.Services.Checkout
 				cart.TotalPrice);
 		}
 
-		public async Task<CheckoutReviewInfo> GetReviewAsync(
+		public async Task<CheckoutPaymentReview> GetPaymentReviewAsync(
 			User user,
 			CheckoutState state,
-			CancellationToken cancellationToken)
+			decimal total)
 		{
-			CheckoutCartSnapshot snapshot =
-				await GetCartSnapshotAsync(
-					user,
-					cancellationToken);
-
 			decimal? walletBalance = null;
 			string? paymentError = null;
 
@@ -117,16 +110,14 @@ namespace PaladinHubV2.Server.Domain.Services.Checkout
 				walletBalance =
 					await _wallet.GetBalanceAsync(user.Id);
 
-				if (walletBalance < snapshot.Total)
+				if (walletBalance < total)
 				{
 					paymentError =
 						"Insufficient wallet balance.";
 				}
 			}
 
-			return new CheckoutReviewInfo(
-				snapshot.Items,
-				snapshot.Total,
+			return new CheckoutPaymentReview(
 				walletBalance,
 				paymentError);
 		}
