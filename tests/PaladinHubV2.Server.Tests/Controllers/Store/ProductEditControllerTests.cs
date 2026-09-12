@@ -77,7 +77,7 @@ public sealed class ProductEditControllerTests
         var (controller, products, _) = CreateController();
 
         BadRequestObjectResult bad = Assert.IsType<BadRequestObjectResult>(
-            await controller.EditLegacy(null, CancellationToken.None));
+            await controller.EditLegacy((EditProductViewModel?)null, CancellationToken.None));
 
         Assert.Equal("Product data is required.", ReadString(bad.Value, "message"));
         products.Verify(
