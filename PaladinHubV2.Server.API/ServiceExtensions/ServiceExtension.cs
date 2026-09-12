@@ -225,6 +225,7 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 			services.AddScoped<IAccountUiService, AccountUiService>();
 			services.AddScoped<AuthSessionService>();
 			services.AddScoped<AuthRegistrationService>();
+			services.AddScoped<AuthLoginService>();
 			services.AddScoped<ISecurityService, SecurityService>();
 			services.AddScoped<AccountTwoFactorService>();
 			services.AddScoped<IAvatarService, AvatarService>();
