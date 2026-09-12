@@ -51,9 +51,7 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 					configuration,
 					environment);
 
-			string connectionString =
-				resolvedConnection.ConnectionString;
-
+			string connectionString = resolvedConnection.ConnectionString;
 			bool isDevelopment = environment.IsDevelopment();
 			SameSiteMode cookieSameSite =
 				isDevelopment ? SameSiteMode.Lax : SameSiteMode.None;
@@ -239,6 +237,11 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 			services.AddScoped<ICheckoutOrderService, CheckoutOrderService>();
 			services.AddScoped<ICheckoutCardPaymentService, CheckoutCardPaymentService>();
 			services.AddScoped<CheckoutCardFlowService>();
+
+			services.AddScoped<
+				PaladinHubV2.Server.Domain.Services.GameData.GameDataAssignmentService>();
+			services.AddScoped<
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.DisciplineAdminService>();
 
 			services.AddScoped<ICartStore, MemoryCartStore>();
 			services.AddScoped<IBlockRenderer, BlockRenderer>();
