@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using PaladinHubV2.Server.Data.Entities;
 using PaladinHubV2.Server.Domain.Services.Accounts;
@@ -13,20 +12,15 @@ namespace PaladinHubV2.Server.API.Controllers.Accounts
 	[Route("Account")]
 	public sealed class AccountTwoFactorController : ControllerBase
 	{
-		private readonly ISecurityService _security;
 		private readonly IAccountUiService _ui;
 		private readonly AccountTwoFactorService _twoFactor;
 
 		public AccountTwoFactorController(
-			ISecurityService security,
 			IAccountUiService ui,
-			UserManager<User> userManager)
+			AccountTwoFactorService twoFactor)
 		{
-			_security = security;
 			_ui = ui;
-			_twoFactor = new AccountTwoFactorService(
-				security,
-				userManager);
+			_twoFactor = twoFactor;
 		}
 
 		[HttpGet("Enable2FA")]
@@ -161,10 +155,7 @@ namespace PaladinHubV2.Server.API.Controllers.Accounts
 				});
 			}
 
-			if (me.TwoFactorEnabled)
-			{
-				await _security.ToggleTwoFactor(me, false);
-			}
+			await _twoFactor.DisableAsync(me);
 
 			HttpContext.Session.SetString(
 				"require_2fa",

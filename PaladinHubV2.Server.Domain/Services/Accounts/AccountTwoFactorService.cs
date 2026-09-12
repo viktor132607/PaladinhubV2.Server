@@ -164,6 +164,16 @@ namespace PaladinHubV2.Server.Domain.Services.Accounts
 				generatedCodes?.ToArray() ?? Array.Empty<string>());
 		}
 
+		public async Task DisableAsync(User user)
+		{
+			ArgumentNullException.ThrowIfNull(user);
+
+			if (user.TwoFactorEnabled)
+			{
+				await _security.ToggleTwoFactor(user, false);
+			}
+		}
+
 		public async Task<string[]?> GenerateRecoveryCodesAsync(
 			User user)
 		{
