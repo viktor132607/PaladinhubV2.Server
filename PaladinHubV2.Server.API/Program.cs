@@ -341,6 +341,8 @@ static async Task InitializeDatabaseAsync(
 
     using (var sql = new StreamReader(typeof(Program).Assembly.GetManifestResourceStream("DatabaseUpgrades.Categories.sql")!))
         await database.Database.ExecuteSqlRawAsync(await sql.ReadToEndAsync());
+    using (var sql = new StreamReader(typeof(Program).Assembly.GetManifestResourceStream("DatabaseUpgrades.Classes.sql")!))
+        await database.Database.ExecuteSqlRawAsync(await sql.ReadToEndAsync());
 	IEnumerable<ISeeder> seeders =
 		scope.ServiceProvider
 			.GetServices<ISeeder>()

@@ -49,6 +49,8 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 			await using var categoryTransaction = await CategoryRules.BeginAsync(_db, cancellationToken);
             if (!await CategoryRules.CanAssignAsync(_db, spell.CategoryId, null, cancellationToken))
                 return BadRequest(new { message = "Choose an active category." });
+            if (!await CategoryRules.CanAssignDisciplineAsync(_db, spell.DisciplineId, null, cancellationToken))
+                return BadRequest(new { message = "Choose an active class or specialization." });
 			NormalizeSpell(spell);
             if (!await _db.RecordTypes.AnyAsync(type => type.Name == spell.Quality, cancellationToken))
                 return BadRequest(new { message = "Choose an existing type. Refresh the type list if it was changed." });
@@ -128,6 +130,9 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
             if (!await CategoryRules.CanAssignAsync(_db, spell.CategoryId, existing.CategoryId, cancellationToken))
                 return BadRequest(new { message = "Choose an active category." });
             existing.CategoryId = spell.CategoryId;
+            if (!await CategoryRules.CanAssignDisciplineAsync(_db, spell.DisciplineId, existing.DisciplineId, cancellationToken))
+                return BadRequest(new { message = "Choose an active class or specialization." });
+            existing.DisciplineId = spell.DisciplineId;
             NormalizeSpell(spell);
             if (!await _db.RecordTypes.AnyAsync(type => type.Name == spell.Quality, cancellationToken))
                 return BadRequest(new { message = "Choose an existing type. Refresh the type list if it was changed." });

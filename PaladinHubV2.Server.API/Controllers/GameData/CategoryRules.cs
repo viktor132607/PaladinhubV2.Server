@@ -21,4 +21,14 @@ internal static class CategoryRules
         return await db.Categories.AnyAsync(category => category.Id == id && !category.IsDeleted &&
             (!category.IsArchived || id == previousId), ct);
     }
+
+    public static async Task<bool> CanAssignDisciplineAsync(AppDbContext db, int? id, int? previousId, CancellationToken ct)
+    {
+        if (id is null) return true;
+        var value = await db.GameDisciplines.AsNoTracking().SingleOrDefaultAsync(c => c.Id == id, ct);
+        if (value is null || value.IsDeleted || (value.IsArchived && id != previousId)) return false;
+        if (value.ParentId is null) return true;
+        return await db.GameDisciplines.AnyAsync(c => c.Id == value.ParentId && !c.IsDeleted && c.ParentId == null &&
+            (!c.IsArchived || id == previousId), ct);
+    }
 }

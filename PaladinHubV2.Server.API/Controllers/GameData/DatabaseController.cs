@@ -28,6 +28,7 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 			[FromQuery] int page = 1,
 			[FromQuery] int pageSize = 20,
             [FromQuery] int? categoryId = null,
+            [FromQuery] int? disciplineId = null,
 			CancellationToken cancellationToken = default)
 		{
 			var selectedEntity = ParseEntity(entity);
@@ -46,6 +47,14 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
             }
 
 			page = Math.Max(page, 1);
+            var disciplineIds = new List<int>();
+            if (disciplineId > 0)
+            {
+                if (!await _db.GameDisciplines.AnyAsync(c => c.Id == disciplineId && !c.IsDeleted, cancellationToken))
+                    return BadRequest(new { message = "Class or specialization does not exist." });
+                disciplineIds = await _db.GameDisciplines.Where(c => !c.IsDeleted && (c.Id == disciplineId || c.ParentId == disciplineId))
+                    .Select(c => c.Id).ToListAsync(cancellationToken);
+            }
 			pageSize = Math.Clamp(pageSize, 1, 100);
 
 			var model = new AdminDatabaseIndexViewModel
@@ -62,7 +71,9 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 					.AsNoTracking()
 					.AsQueryable();
                 if (categoryId == 0) query = query.Where(s => s.CategoryId == null);
-                else if (categoryId > 0) query = query.Where(s => s.CategoryId != null && categoryIds.Contains(s.CategoryId.Value));
+                if (disciplineId == 0) query = query.Where(s => s.DisciplineId == null);
+                else if (disciplineId > 0) query = query.Where(s => s.DisciplineId != null && disciplineIds.Contains(s.DisciplineId.Value));
+                if (categoryId > 0) query = query.Where(s => s.CategoryId != null && categoryIds.Contains(s.CategoryId.Value));
 
 				if (!string.IsNullOrWhiteSpace(normalizedSearch))
 				{
@@ -94,7 +105,9 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 					.AsNoTracking()
 					.AsQueryable();
                 if (categoryId == 0) query = query.Where(i => i.CategoryId == null);
-                else if (categoryId > 0) query = query.Where(i => i.CategoryId != null && categoryIds.Contains(i.CategoryId.Value));
+                if (disciplineId == 0) query = query.Where(i => i.DisciplineId == null);
+                else if (disciplineId > 0) query = query.Where(i => i.DisciplineId != null && disciplineIds.Contains(i.DisciplineId.Value));
+                if (categoryId > 0) query = query.Where(i => i.CategoryId != null && categoryIds.Contains(i.CategoryId.Value));
 
 				if (!string.IsNullOrWhiteSpace(normalizedSearch))
 				{

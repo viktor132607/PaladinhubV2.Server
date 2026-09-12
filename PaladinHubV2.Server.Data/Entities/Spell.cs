@@ -8,6 +8,7 @@ namespace PaladinHubV2.Server.Data.Entities
 		public int Id { get; set; }
 
 		public int? CategoryId { get; set; }
+        public int? DisciplineId { get; set; }
 
 		[Required]
 		[MaxLength(100)]

@@ -41,6 +41,8 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 			await using var categoryTransaction = await CategoryRules.BeginAsync(_db, cancellationToken);
             if (!await CategoryRules.CanAssignAsync(_db, item.CategoryId, null, cancellationToken))
                 return BadRequest(new { message = "Choose an active category." });
+            if (!await CategoryRules.CanAssignDisciplineAsync(_db, item.DisciplineId, null, cancellationToken))
+                return BadRequest(new { message = "Choose an active class or specialization." });
 			item.Name = item.Name.Trim();
 			item.Icon = NormalizeOptional(item.Icon);
 			item.SecondIcon = NormalizeOptional(item.SecondIcon);
@@ -126,6 +128,9 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
             if (!await CategoryRules.CanAssignAsync(_db, item.CategoryId, existing.CategoryId, cancellationToken))
                 return BadRequest(new { message = "Choose an active category." });
             existing.CategoryId = item.CategoryId;
+            if (!await CategoryRules.CanAssignDisciplineAsync(_db, item.DisciplineId, existing.DisciplineId, cancellationToken))
+                return BadRequest(new { message = "Choose an active class or specialization." });
+            existing.DisciplineId = item.DisciplineId;
 			existing.Icon = NormalizeOptional(item.Icon);
 			existing.SecondIcon = NormalizeOptional(item.SecondIcon);
 			existing.Description = NormalizeOptional(item.Description);
