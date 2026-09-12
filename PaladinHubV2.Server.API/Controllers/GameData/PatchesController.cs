@@ -1,127 +1,140 @@
-using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
-using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
+using PaladinHubV2.Server.Common.Models.GameData;
 using PaladinHubV2.Server.Data;
-using PaladinHubV2.Server.Data.Entities;
+using PaladinHubV2.Server.Domain.Services.GameData;
+using PaladinHubV2.Server.Domain.Services.GameDataAdmin;
 
 namespace PaladinHubV2.Server.API.Controllers.GameData;
 
 [ApiController, Authorize(Roles = "Admin"), Route("Admin/api/patches")]
-public sealed class PatchesController(AppDbContext db) : ControllerBase
+public sealed class PatchesController : ControllerBase
 {
-    public sealed record PatchRequest([property: Required, MaxLength(100)] string Name,
-        [property: MaxLength(2000)] string? Description, int SortOrder, bool IsArchived, int Version);
-    public sealed record RestoreRequest(Guid RevisionId, int Version);
+	private readonly PatchAdminService _patches;
 
-    [HttpGet]
-    public async Task<IActionResult> List(CancellationToken ct) => Ok(await db.GamePatches.AsNoTracking()
-        .OrderBy(c => c.SortOrder).ThenBy(c => c.Name).Select(c => new {
-            c.Id, c.Name, c.Description, parentId = (int?)null, c.SortOrder, c.IsArchived, c.IsDeleted, c.Version,
-            usageCount = db.Spells.Count(s => s.PatchId == c.Id) + db.Items.Count(i => i.PatchId == c.Id),
-            childCount = 0
-        }).ToListAsync(ct));
+	public PatchesController(
+		AppDbContext db,
+		GameDataAssignmentService assignments)
+	{
+		_patches = new PatchAdminService(db, assignments);
+	}
 
-    [HttpGet("{id:int}/history")]
-    public async Task<IActionResult> History(int id, CancellationToken ct) => Ok(await db.PatchRevisions
-        .AsNoTracking().Where(r => r.PatchId == id).OrderByDescending(r => r.Version).ToListAsync(ct));
+	[HttpGet]
+	public async Task<IActionResult> List(CancellationToken ct)
+	{
+		return Ok(await _patches.ListAsync(ct));
+	}
 
-    [HttpPost, ValidateAntiForgeryToken]
-    public async Task<IActionResult> Create(PatchRequest request, CancellationToken ct)
-    {
-        await using var transaction = await CategoryRules.BeginAsync(db, ct);
-        var category = new GamePatch();
-        var error = await Validate(category.Id, request, ct);
-        if (error is not null) return BadRequest(new { message = error });
-        Apply(category, request);
-        db.GamePatches.Add(category);
-        await db.SaveChangesAsync(ct);
-        Record(category, "created");
-        await db.SaveChangesAsync(ct);
-        await transaction.CommitAsync(ct);
-        return Ok(category);
-    }
+	[HttpGet("{id:int}/history")]
+	public async Task<IActionResult> History(
+		int id,
+		CancellationToken ct)
+	{
+		return Ok(await _patches.HistoryAsync(id, ct));
+	}
 
-    [HttpPut("{id:int}"), ValidateAntiForgeryToken]
-    public async Task<IActionResult> Edit(int id, PatchRequest request, CancellationToken ct)
-    {
-        await using var transaction = await CategoryRules.BeginAsync(db, ct);
-        var category = await db.GamePatches.SingleOrDefaultAsync(c => c.Id == id && !c.IsDeleted, ct);
-        if (category is null) return NotFound();
-        if (request.Version != category.Version) return Stale();
-        var error = await Validate(id, request, ct);
-        if (error is not null) return BadRequest(new { message = error });
-        var action = category.IsArchived == request.IsArchived ? "updated" : request.IsArchived ? "archived" : "unarchived";
-        Apply(category, request);
-        category.Version++;
-        Record(category, action);
-        await db.SaveChangesAsync(ct);
-        await transaction.CommitAsync(ct);
-        return Ok(category);
-    }
+	[HttpPost, ValidateAntiForgeryToken]
+	public async Task<IActionResult> Create(
+		PatchRequest request,
+		CancellationToken ct)
+	{
+		PatchAdminResult result = await _patches.CreateAsync(
+			request,
+			Actor(),
+			ct);
 
-    [HttpDelete("{id:int}"), ValidateAntiForgeryToken]
-    public async Task<IActionResult> Delete(int id, [FromQuery] int version, CancellationToken ct)
-    {
-        await using var transaction = await CategoryRules.BeginAsync(db, ct);
-        var category = await db.GamePatches.SingleOrDefaultAsync(c => c.Id == id && !c.IsDeleted, ct);
-        if (category is null) return NotFound();
-        if (version != category.Version) return Stale();
-        if (await db.Spells.AnyAsync(s => s.PatchId == id, ct) || await db.Items.AnyAsync(i => i.PatchId == id, ct))
-            return Conflict(new { message = "Remove this patch from assigned records before deleting it, or archive it." });
-        category.IsDeleted = true;
-        category.Version++;
-        Record(category, "deleted");
-        await db.SaveChangesAsync(ct);
-        await transaction.CommitAsync(ct);
-        return NoContent();
-    }
+		if (result.Error == PatchAdminError.Validation)
+		{
+			return BadRequest(new { message = result.Message });
+		}
 
-    [HttpPost("{id:int}/restore"), ValidateAntiForgeryToken]
-    public async Task<IActionResult> Restore(int id, RestoreRequest request, CancellationToken ct)
-    {
-        await using var transaction = await CategoryRules.BeginAsync(db, ct);
-        var category = await db.GamePatches.SingleOrDefaultAsync(c => c.Id == id, ct);
-        if (category is null) return NotFound();
-        if (request.Version != category.Version) return Stale();
-        var revision = await db.PatchRevisions.SingleOrDefaultAsync(r => r.Id == request.RevisionId && r.PatchId == id, ct);
-        if (revision is null) return NotFound();
-        var snapshot = JsonSerializer.Deserialize<GamePatch>(revision.Snapshot)!;
-        if (snapshot.IsDeleted) return BadRequest(new { message = "Select a revision before deletion." });
-        var restored = new PatchRequest(snapshot.Name, snapshot.Description, snapshot.SortOrder, snapshot.IsArchived, category.Version);
-        var error = await Validate(id, restored, ct);
-        if (error is not null) return Conflict(new { message = error });
-        Apply(category, restored);
-        category.IsDeleted = false;
-        category.Version++;
-        Record(category, "restored");
-        await db.SaveChangesAsync(ct);
-        await transaction.CommitAsync(ct);
-        return Ok(category);
-    }
+		return Ok(result.Patch);
+	}
 
-    private IActionResult Stale() => Conflict(new { message = "This patch changed in another session. Refresh before saving." });
+	[HttpPut("{id:int}"), ValidateAntiForgeryToken]
+	public async Task<IActionResult> Edit(
+		int id,
+		PatchRequest request,
+		CancellationToken ct)
+	{
+		PatchAdminResult result = await _patches.UpdateAsync(
+			id,
+			request,
+			Actor(),
+			ct);
 
-    private async Task<string?> Validate(int id, PatchRequest request, CancellationToken ct)
-    {
-        if (string.IsNullOrWhiteSpace(request.Name)) return "Name is required.";
-        var name = request.Name.Trim().ToLowerInvariant();
-        return await db.GamePatches.AnyAsync(t => t.Id != id && !t.IsDeleted && t.Name.ToLower() == name, ct)
-            ? "A patch with this name already exists." : null;
-    }
+		return result.Error switch
+		{
+			PatchAdminError.None => Ok(result.Patch),
+			PatchAdminError.NotFound => NotFound(),
+			PatchAdminError.Stale => Stale(),
+			PatchAdminError.Validation =>
+				BadRequest(new { message = result.Message }),
+			_ => Conflict()
+		};
+	}
 
-    private static void Apply(GamePatch category, PatchRequest request)
-    {
-        category.Name = request.Name.Trim();
-        category.Description = request.Description?.Trim() ?? "";
-        category.SortOrder = request.SortOrder;
-        category.IsArchived = request.IsArchived;
-    }
+	[HttpDelete("{id:int}"), ValidateAntiForgeryToken]
+	public async Task<IActionResult> Delete(
+		int id,
+		[FromQuery] int version,
+		CancellationToken ct)
+	{
+		PatchAdminResult result = await _patches.DeleteAsync(
+			id,
+			version,
+			Actor(),
+			ct);
 
-    private void Record(GamePatch category, string action) => db.PatchRevisions.Add(new PatchRevision {
-        PatchId = category.Id, Version = category.Version, Action = action,
-        Actor = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "admin", Snapshot = JsonSerializer.Serialize(category)
-    });
+		return result.Error switch
+		{
+			PatchAdminError.None => NoContent(),
+			PatchAdminError.NotFound => NotFound(),
+			PatchAdminError.Stale => Stale(),
+			PatchAdminError.InUse =>
+				Conflict(new { message = result.Message }),
+			_ => Conflict()
+		};
+	}
+
+	[HttpPost("{id:int}/restore"), ValidateAntiForgeryToken]
+	public async Task<IActionResult> Restore(
+		int id,
+		RevisionRestoreRequest request,
+		CancellationToken ct)
+	{
+		PatchAdminResult result = await _patches.RestoreAsync(
+			id,
+			request,
+			Actor(),
+			ct);
+
+		return result.Error switch
+		{
+			PatchAdminError.None => Ok(result.Patch),
+			PatchAdminError.NotFound or
+			PatchAdminError.RevisionNotFound => NotFound(),
+			PatchAdminError.Stale => Stale(),
+			PatchAdminError.DeletedRevision =>
+				BadRequest(new { message = result.Message }),
+			PatchAdminError.Validation =>
+				Conflict(new { message = result.Message }),
+			_ => Conflict()
+		};
+	}
+
+	private IActionResult Stale()
+	{
+		return Conflict(new
+		{
+			message =
+				"This patch changed in another session. Refresh before saving."
+		});
+	}
+
+	private string Actor()
+	{
+		return User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "admin";
+	}
 }
