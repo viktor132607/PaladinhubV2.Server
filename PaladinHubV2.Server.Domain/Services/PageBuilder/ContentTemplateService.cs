@@ -16,7 +16,7 @@ public sealed class ContentTemplateService(AppDbContext db, IJsonLayoutValidator
 
     public string? Validate(string kind, TemplateRequest request)
     {
-        if (kind != "block") return "Unknown template kind.";
+        if (kind is not ("block" or "talent-tree")) return "Unknown template kind.";
         if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Trim().Length > 100) return "Enter a name of 1–100 characters.";
         if ((request.Description?.Length ?? 0) > 1000) return "Description must be at most 1000 characters.";
         if (string.IsNullOrWhiteSpace(request.JsonLayout) || request.JsonLayout.Length > 500000) return "Content is required and must be under 500 KB.";
@@ -24,6 +24,7 @@ public sealed class ContentTemplateService(AppDbContext db, IJsonLayoutValidator
         {
             validator.ValidateOrThrow(request.JsonLayout);
             using var json = JsonDocument.Parse(request.JsonLayout);
+            if (kind == "talent-tree" && (json.RootElement.GetArrayLength() != 1 || json.RootElement[0].GetProperty("type").GetString() != "talenttree.dynamic")) return "A talent template must contain exactly one dynamic talent tree.";
             if (json.RootElement.GetArrayLength() == 0 || json.RootElement.GetArrayLength() > 100) return "Choose between 1 and 100 blocks.";
         }
         catch (JsonLayoutValidationException e) { return string.Join(" ", e.Errors); }

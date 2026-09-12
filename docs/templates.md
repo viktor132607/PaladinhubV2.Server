@@ -9,3 +9,7 @@ Reuse is by copy: template edits/deletion never alter inserted pages. Dynamic tr
 `docs/templates-upgrade.sql` is embedded and applied with the existing `APPLY_MIGRATIONS_ON_STARTUP` gate. It creates two tables and a revision uniqueness index idempotently. No existing page content is migrated.
 
 Validation: client production build and copy-isolation unit tests; server model/validation/auth/CSRF checks; PGlite execution of the upgrade twice with preserved records, FK and version uniqueness checks; browser create/insert/rename/archive/delete/restore flows with mocked API at 428, 926 and 1440 CSS pixels. Production database migration and physical iPhone Safari are not exercised locally.
+
+## Talent tree templates
+
+The Talent Tree Builder exposes a separate **Talent tree templates** library in each tree editor. Save the current tree (title, grid, point budget, talents, shapes, ranks and prerequisites), then load it into another tree with **Replace current tree**. Replacement requires confirmation, creates fresh IDs and remains unsaved until the page is saved. Metadata/content editing, history, archival and recovery use the same controls as block templates. The `talent-tree` kind requires exactly one valid dynamic tree; the existing server validator rejects missing/cyclic prerequisites, duplicate cells/IDs and invalid grid/rank settings. No extra SQL upgrade is required.

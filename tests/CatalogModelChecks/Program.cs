@@ -82,3 +82,9 @@ foreach (var method in new[] { "Create", "Update", "Change" })
 if (!db.Model.FindEntityType(typeof(ContentTemplate))!.FindProperty("Version")!.IsConcurrencyToken) throw new Exception("Template version must prevent lost updates.");
 if (db.Model.FindEntityType(typeof(ContentTemplateRevision))!.GetForeignKeys().Single().DeleteBehavior != DeleteBehavior.Restrict) throw new Exception("Template history deletion must be restricted.");
 Console.WriteLine("PASS: template validation, history FK, concurrency, admin authorization and CSRF.");
+
+const string validTreeTemplate = """[{"type":"talenttree.dynamic","id":"tree","title":"Example","rows":8,"columns":6,"points":30,"nodes":[]}]""";
+if (templateService.Validate("talent-tree", new("Example", "", validTreeTemplate, 0)) is not null) throw new Exception("Valid talent template rejected.");
+foreach (var invalid in new[] { "[{\"type\":\"paragraph\"}]", "[{\"type\":\"talenttree.dynamic\"}]", "[]" })
+    if (templateService.Validate("talent-tree", new("Example", "", invalid, 0)) is null) throw new Exception("Invalid talent template accepted.");
+Console.WriteLine("PASS: talent templates accept only one validated dynamic tree.");
