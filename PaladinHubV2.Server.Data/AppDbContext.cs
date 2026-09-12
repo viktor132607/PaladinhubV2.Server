@@ -65,6 +65,8 @@ namespace PaladinHubV2.Server.Data
 
         public string? AuditActor { get; set; }
         public string? PageAuditAction { get; set; }
+        public DbSet<ContentTemplate> ContentTemplates => Set<ContentTemplate>();
+        public DbSet<ContentTemplateRevision> ContentTemplateRevisions => Set<ContentTemplateRevision>();
         public DbSet<PageRevision> PageRevisions => Set<PageRevision>();
 		public DbSet<ContentPage> ContentPages =>
 			Set<ContentPage>();
@@ -647,6 +649,8 @@ namespace PaladinHubV2.Server.Data
 		private static void ConfigurePageBuilder(
 			ModelBuilder builder)
 		{
+            builder.Entity<ContentTemplateRevision>().HasOne<ContentTemplate>().WithMany().HasForeignKey(r => r.TemplateId).OnDelete(DeleteBehavior.Restrict);
+            builder.Entity<ContentTemplateRevision>().HasIndex(r => new { r.TemplateId, r.Version }).IsUnique();
             builder.Entity<PageRevision>().HasOne(r => r.Page).WithMany().HasForeignKey(r => r.PageId).OnDelete(DeleteBehavior.ClientNoAction);
             builder.Entity<PageRevision>().HasIndex(r => new { r.PageId, r.Version }).IsUnique();
 			builder.Entity<ContentPage>(entity =>

@@ -70,3 +70,15 @@ using (var auditDb = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>(
     if(auditDb.Model.FindEntityType(typeof(ContentPage))!.GetQueryFilter() is null)throw new Exception("Page visibility filter missing");
 }
 Console.WriteLine("PASS: page create/update/delete audit, row versions, recovery snapshots and visibility filter.");
+
+var templateService = new PaladinHubV2.Server.Domain.Services.PageBuilder.ContentTemplateService(db, new PaladinHubV2.Server.Domain.Services.PageBuilder.JsonLayoutValidator());
+if (templateService.Validate("block", new("Example", "", "[{\"type\":\"paragraph\",\"Text\":\"Hello\"}]", 0)) is not null) throw new Exception("Valid block template rejected.");
+foreach (var badJson in new[] { "[]", "{}", "not json", "[{\"type\":\"unknown\"}]", "[{\"type\":\"talenttree.dynamic\"}]" })
+    if (templateService.Validate("block", new("Example", "", badJson, 0)) is null) throw new Exception("Invalid template accepted.");
+var templatesController = typeof(PaladinHubV2.Server.API.Controllers.Content.PageBuilder.ContentTemplatesController);
+if (templatesController.GetCustomAttributes(typeof(AuthorizeAttribute), true).Cast<AuthorizeAttribute>().All(a => a.Roles != "Admin")) throw new Exception("Templates authorization missing.");
+foreach (var method in new[] { "Create", "Update", "Change" })
+    if (!templatesController.GetMethod(method)!.IsDefined(typeof(ValidateAntiForgeryTokenAttribute), true)) throw new Exception("Templates CSRF missing.");
+if (!db.Model.FindEntityType(typeof(ContentTemplate))!.FindProperty("Version")!.IsConcurrencyToken) throw new Exception("Template version must prevent lost updates.");
+if (db.Model.FindEntityType(typeof(ContentTemplateRevision))!.GetForeignKeys().Single().DeleteBehavior != DeleteBehavior.Restrict) throw new Exception("Template history deletion must be restricted.");
+Console.WriteLine("PASS: template validation, history FK, concurrency, admin authorization and CSRF.");
