@@ -11,6 +11,7 @@ using PaladinHubV2.Server.API.Controllers.Store;
 using PaladinHubV2.Server.Data.Entities;
 using PaladinHubV2.Server.Domain.Services.Checkout;
 using Xunit;
+using PaymentMethod = PaladinHub.Models.Checkout.PaymentMethod;
 
 namespace PaladinHubV2.Server.Tests.Controllers.Store;
 
