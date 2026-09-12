@@ -88,3 +88,16 @@ if (templateService.Validate("talent-tree", new("Example", "", validTreeTemplate
 foreach (var invalid in new[] { "[{\"type\":\"paragraph\"}]", "[{\"type\":\"talenttree.dynamic\"}]", "[]" })
     if (templateService.Validate("talent-tree", new("Example", "", invalid, 0)) is null) throw new Exception("Invalid talent template accepted.");
 Console.WriteLine("PASS: talent templates accept only one validated dynamic tree.");
+
+var validLanguage = new PaladinHubV2.Server.Domain.Services.Localization.LanguageRequest("bg", "Български", new() { ["Home"] = "Начало" }, 0);
+if (PaladinHubV2.Server.Domain.Services.Localization.LocalizationService.Validate(validLanguage) is not null) throw new Exception("Valid translations rejected.");
+foreach (var invalid in new[] { validLanguage with { Code = "../en" }, validLanguage with { Name = " " }, validLanguage with { Translations = null }, validLanguage with { Translations = new() { [" "] = "Invalid" } } })
+    if (PaladinHubV2.Server.Domain.Services.Localization.LocalizationService.Validate(invalid) is null) throw new Exception("Invalid translations accepted.");
+if (PaladinHubV2.Server.Domain.Services.Localization.LocalizationService.CanHide("en") || PaladinHubV2.Server.Domain.Services.Localization.LocalizationService.CanHide("EN")) throw new Exception("English fallback must be protected.");
+var localizationController = typeof(PaladinHubV2.Server.API.Controllers.Content.LocalizationController);
+if (localizationController.GetCustomAttributes(typeof(AuthorizeAttribute), true).Cast<AuthorizeAttribute>().All(a => a.Roles != "Admin")) throw new Exception("Localization authorization missing.");
+foreach (var method in new[] { "Create", "Update", "Change" })
+    if (!localizationController.GetMethod(method)!.IsDefined(typeof(ValidateAntiForgeryTokenAttribute), true)) throw new Exception("Localization CSRF missing.");
+if (!db.Model.FindEntityType(typeof(SiteLanguage))!.FindProperty("Version")!.IsConcurrencyToken) throw new Exception("Language updates need concurrency checks.");
+if (db.Model.FindEntityType(typeof(LanguageRevision))!.GetForeignKeys().Single().DeleteBehavior != DeleteBehavior.Restrict) throw new Exception("Language revisions must prevent physical deletion.");
+Console.WriteLine("PASS: localization validation, fallback protection, revision FK, concurrency and admin/CSRF.");
