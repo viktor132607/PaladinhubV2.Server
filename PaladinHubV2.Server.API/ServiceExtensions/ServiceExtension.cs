@@ -263,6 +263,8 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 				ISpellbookService,
 				SpellbookService>();
 
+			services.AddScoped<SpellAdminService>();
+
 			services.AddScoped<
 				IItemsService,
 				ItemsService>();
