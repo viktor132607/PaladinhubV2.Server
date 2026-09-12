@@ -133,6 +133,32 @@ namespace PaladinHubV2.Server.API.Controllers.Accounts
 			});
 		}
 
+		[HttpPost("MarkPhoneVerified")]
+		[ValidateAntiForgeryToken]
+		public async Task<IActionResult> MarkPhoneVerified(
+			CancellationToken cancellationToken)
+		{
+			User? me = await Me();
+
+			if (me == null)
+			{
+				return Unauthorized(new
+				{
+					message = "Authentication required."
+				});
+			}
+
+			await _ui.MarkPhoneVerifiedAsync(
+				me,
+				cancellationToken);
+
+			return Ok(new
+			{
+				ok = true,
+				phoneNumberConfirmed = true
+			});
+		}
+
 		private Task<User?> Me()
 		{
 			return _ui.GetMe(User);

@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using PaladinHub.Models.Account;
 using PaladinHubV2.Server.Data.Entities;
@@ -14,14 +13,10 @@ namespace PaladinHubV2.Server.API.Controllers.Accounts
 	public sealed class AccountController : ControllerBase
 	{
 		private readonly IAccountUiService _ui;
-		private readonly SignInManager<User> _signInManager;
 
-		public AccountController(
-			IAccountUiService ui,
-			SignInManager<User> signInManager)
+		public AccountController(IAccountUiService ui)
 		{
 			_ui = ui;
-			_signInManager = signInManager;
 		}
 
 		[HttpGet("MyAccount")]
@@ -81,39 +76,5 @@ namespace PaladinHubV2.Server.API.Controllers.Accounts
 
 		[HttpGet("Connections")]
 		public IActionResult Connections() => NoContent();
-
-		[HttpPost("Logout")]
-		[ValidateAntiForgeryToken]
-		public async Task<IActionResult> Logout()
-		{
-			await _signInManager.SignOutAsync();
-			return Ok(new { ok = true });
-		}
-
-		[HttpPost("MarkPhoneVerified")]
-		[ValidateAntiForgeryToken]
-		public async Task<IActionResult> MarkPhoneVerified(
-			CancellationToken cancellationToken)
-		{
-			User? me = await _ui.GetMe(User);
-
-			if (me == null)
-			{
-				return Unauthorized(new
-				{
-					message = "Authentication required."
-				});
-			}
-
-			await _ui.MarkPhoneVerifiedAsync(
-				me,
-				cancellationToken);
-
-			return Ok(new
-			{
-				ok = true,
-				phoneNumberConfirmed = true
-			});
-		}
 	}
 }

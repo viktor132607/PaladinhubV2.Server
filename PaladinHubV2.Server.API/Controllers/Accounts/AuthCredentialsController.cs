@@ -67,4 +67,13 @@ public sealed class AuthCredentialsController : ControllerBase
 		await _signInManager.SignOutAsync();
 		return Ok(AuthSessionResponse.Anonymous);
 	}
+
+	[HttpPost("~/api/account/Logout")]
+	[HttpPost("~/Account/Logout")]
+	[ValidateAntiForgeryToken]
+	public async Task<IActionResult> LegacyAccountLogout()
+	{
+		await _signInManager.SignOutAsync();
+		return Ok(new { ok = true });
+	}
 }
