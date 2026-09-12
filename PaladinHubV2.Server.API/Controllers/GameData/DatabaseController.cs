@@ -30,6 +30,7 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
             [FromQuery] int? categoryId = null,
             [FromQuery] int? disciplineId = null,
             [FromQuery] int? tagId = null,
+            [FromQuery] int? patchId = null,
 			CancellationToken cancellationToken = default)
 		{
 			var selectedEntity = ParseEntity(entity);
@@ -75,6 +76,8 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
                 if (disciplineId == 0) query = query.Where(s => s.DisciplineId == null);
                 else if (disciplineId > 0) query = query.Where(s => s.DisciplineId != null && disciplineIds.Contains(s.DisciplineId.Value));
                 if (categoryId > 0) query = query.Where(s => s.CategoryId != null && categoryIds.Contains(s.CategoryId.Value));
+                if (patchId == 0) query = query.Where(s => s.PatchId == null);
+                else if (patchId > 0) query = query.Where(s => s.PatchId == patchId);
                 if (tagId == 0) query = query.Where(s => s.TagIds.Length == 0);
                 else if (tagId > 0) query = query.Where(s => s.TagIds.Contains(tagId.Value));
 
@@ -112,6 +115,8 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
                 if (disciplineId == 0) query = query.Where(i => i.DisciplineId == null);
                 else if (disciplineId > 0) query = query.Where(i => i.DisciplineId != null && disciplineIds.Contains(i.DisciplineId.Value));
                 if (categoryId > 0) query = query.Where(i => i.CategoryId != null && categoryIds.Contains(i.CategoryId.Value));
+                if (patchId == 0) query = query.Where(i => i.PatchId == null);
+                else if (patchId > 0) query = query.Where(i => i.PatchId == patchId);
                 if (tagId == 0) query = query.Where(i => i.TagIds.Length == 0);
                 else if (tagId > 0) query = query.Where(i => i.TagIds.Contains(tagId.Value));
 

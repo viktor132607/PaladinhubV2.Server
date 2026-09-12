@@ -38,4 +38,9 @@ internal static class CategoryRules
         return await db.GameTags.CountAsync(t => ids.Contains(t.Id) && !t.IsDeleted &&
             (!t.IsArchived || previousIds.Contains(t.Id)), ct) == ids.Distinct().Count();
     }
+    public static async Task<bool> CanAssignPatchAsync(AppDbContext db, int? id, int? previousId, CancellationToken ct)
+    {
+        if (id is null) return true;
+        return await db.GamePatches.AnyAsync(p => p.Id == id && !p.IsDeleted && (!p.IsArchived || id == previousId), ct);
+    }
 }

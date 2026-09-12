@@ -51,6 +51,8 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
                 return BadRequest(new { message = "Choose an active category." });
             if (!await CategoryRules.CanAssignDisciplineAsync(_db, spell.DisciplineId, null, cancellationToken))
                 return BadRequest(new { message = "Choose an active class or specialization." });
+            if (!await CategoryRules.CanAssignPatchAsync(_db, spell.PatchId, null, cancellationToken))
+                return BadRequest(new { message = "Select an active patch." });
             spell.TagIds = (spell.TagIds ?? []).Distinct().ToArray();
             if (!await CategoryRules.CanAssignTagsAsync(_db, spell.TagIds, [], cancellationToken))
                 return BadRequest(new { message = "Choose existing active tags (up to 100)." });
@@ -136,6 +138,9 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
             if (!await CategoryRules.CanAssignDisciplineAsync(_db, spell.DisciplineId, existing.DisciplineId, cancellationToken))
                 return BadRequest(new { message = "Choose an active class or specialization." });
             existing.DisciplineId = spell.DisciplineId;
+            if (!await CategoryRules.CanAssignPatchAsync(_db, spell.PatchId, existing.PatchId, cancellationToken))
+                return BadRequest(new { message = "Select an active patch." });
+            existing.PatchId = spell.PatchId;
             spell.TagIds = (spell.TagIds ?? []).Distinct().ToArray();
             if (!await CategoryRules.CanAssignTagsAsync(_db, spell.TagIds, existing.TagIds, cancellationToken))
                 return BadRequest(new { message = "Choose existing active tags (up to 100)." });
