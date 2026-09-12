@@ -88,25 +88,6 @@ public sealed class SpellIconsController : ControllerBase
 		};
 	}
 
-	[AllowAnonymous]
-	[HttpGet("/api/spell-icons/{id:guid}")]
-	public async Task<IActionResult> Image(
-		Guid id,
-		CancellationToken cancellationToken)
-	{
-		SpellIconImageResult? image =
-			await _icons.GetImageAsync(id, cancellationToken);
-
-		if (image == null)
-		{
-			return NotFound();
-		}
-
-		Response.Headers["X-Content-Type-Options"] = "nosniff";
-		Response.Headers.CacheControl = "public,max-age=31536000,immutable";
-		return File(image.Content, image.ContentType);
-	}
-
 	private string Actor()
 	{
 		return User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "admin";
