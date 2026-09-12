@@ -19,8 +19,8 @@ CREATE TABLE IF NOT EXISTS "TagRevisions" (
     "CreatedAtUtc" timestamptz NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS "IX_TagRevisions_TagId_Version" ON "TagRevisions" ("TagId", "Version");
-ALTER TABLE "Spells" ADD COLUMN IF NOT EXISTS "TagIds" integer[] NOT NULL DEFAULT '{}';
-ALTER TABLE "Items" ADD COLUMN IF NOT EXISTS "TagIds" integer[] NOT NULL DEFAULT '{}';
+ALTER TABLE "Spells" ADD COLUMN IF NOT EXISTS "TagIds" integer[] NOT NULL DEFAULT '{{}}';
+ALTER TABLE "Items" ADD COLUMN IF NOT EXISTS "TagIds" integer[] NOT NULL DEFAULT '{{}}';
 CREATE INDEX IF NOT EXISTS "IX_Spells_TagIds" ON "Spells" USING gin ("TagIds");
 CREATE INDEX IF NOT EXISTS "IX_Items_TagIds" ON "Items" USING gin ("TagIds");
 COMMIT;
