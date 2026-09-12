@@ -22,7 +22,7 @@ public sealed class AuthMultiFactorControllerTests
         var fixture = CreateFixture();
         fixture.SignIn.Setup(x => x.GetTwoFactorAuthenticationUserAsync()).ReturnsAsync((User?)null);
 
-        IActionResult result = await fixture.Controller.TwoFactor(new TwoFactorLoginRequest { Code = "123456" });
+        IActionResult result = await fixture.Controller.LoginWithTwoFactor(new TwoFactorLoginRequest { Code = "123456" });
 
         var response = Assert.IsType<UnauthorizedObjectResult>(result);
         Assert.Equal(
@@ -36,7 +36,7 @@ public sealed class AuthMultiFactorControllerTests
         var user = CreateUser();
         var fixture = CreateFixture(user);
 
-        IActionResult result = await fixture.Controller.TwoFactor(new TwoFactorLoginRequest { Code = "12-34" });
+        IActionResult result = await fixture.Controller.LoginWithTwoFactor(new TwoFactorLoginRequest { Code = "12-34" });
 
         var response = Assert.IsType<BadRequestObjectResult>(result);
         Assert.Equal(
@@ -55,7 +55,7 @@ public sealed class AuthMultiFactorControllerTests
         fixture.SignIn.Setup(x => x.TwoFactorAuthenticatorSignInAsync("123456", true, true))
             .ReturnsAsync(SignInResult.Failed);
 
-        IActionResult result = await fixture.Controller.TwoFactor(new TwoFactorLoginRequest
+        IActionResult result = await fixture.Controller.LoginWithTwoFactor(new TwoFactorLoginRequest
         {
             Code = "12 34-56",
             RememberMe = true,
@@ -75,7 +75,7 @@ public sealed class AuthMultiFactorControllerTests
         fixture.SignIn.Setup(x => x.TwoFactorAuthenticatorSignInAsync("123456", false, false))
             .ReturnsAsync(SignInResult.LockedOut);
 
-        IActionResult result = await fixture.Controller.TwoFactor(new TwoFactorLoginRequest { Code = "123456" });
+        IActionResult result = await fixture.Controller.LoginWithTwoFactor(new TwoFactorLoginRequest { Code = "123456" });
 
         var response = Assert.IsType<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status423Locked, response.StatusCode);
@@ -93,7 +93,7 @@ public sealed class AuthMultiFactorControllerTests
         fixture.SignIn.Setup(x => x.TwoFactorAuthenticatorSignInAsync("123456", false, true))
             .ReturnsAsync(SignInResult.Success);
 
-        IActionResult result = await fixture.Controller.TwoFactor(new TwoFactorLoginRequest
+        IActionResult result = await fixture.Controller.LoginWithTwoFactor(new TwoFactorLoginRequest
         {
             Code = "123456",
             RememberMachine = true
@@ -111,7 +111,7 @@ public sealed class AuthMultiFactorControllerTests
         var fixture = CreateFixture();
         fixture.SignIn.Setup(x => x.GetTwoFactorAuthenticationUserAsync()).ReturnsAsync((User?)null);
 
-        IActionResult result = await fixture.Controller.Recovery(new RecoveryCodeLoginRequest { RecoveryCode = "abcd" });
+        IActionResult result = await fixture.Controller.LoginWithRecoveryCode(new RecoveryCodeLoginRequest { RecoveryCode = "abcd" });
 
         var response = Assert.IsType<UnauthorizedObjectResult>(result);
         Assert.Equal(
@@ -125,7 +125,7 @@ public sealed class AuthMultiFactorControllerTests
         var user = CreateUser();
         var fixture = CreateFixture(user);
 
-        IActionResult result = await fixture.Controller.Recovery(new RecoveryCodeLoginRequest { RecoveryCode = "   " });
+        IActionResult result = await fixture.Controller.LoginWithRecoveryCode(new RecoveryCodeLoginRequest { RecoveryCode = "   " });
 
         var response = Assert.IsType<BadRequestObjectResult>(result);
         Assert.Equal("Recovery code is required.", Assert.IsType<AuthErrorResponse>(response.Value).Message);
@@ -140,7 +140,7 @@ public sealed class AuthMultiFactorControllerTests
         fixture.SignIn.Setup(x => x.TwoFactorRecoveryCodeSignInAsync("abcd"))
             .ReturnsAsync(SignInResult.Failed);
 
-        IActionResult result = await fixture.Controller.Recovery(new RecoveryCodeLoginRequest { RecoveryCode = " ab cd " });
+        IActionResult result = await fixture.Controller.LoginWithRecoveryCode(new RecoveryCodeLoginRequest { RecoveryCode = " ab cd " });
 
         var response = Assert.IsType<UnauthorizedObjectResult>(result);
         Assert.Equal("Invalid recovery code.", Assert.IsType<AuthErrorResponse>(response.Value).Message);
@@ -155,7 +155,7 @@ public sealed class AuthMultiFactorControllerTests
         fixture.SignIn.Setup(x => x.TwoFactorRecoveryCodeSignInAsync("abcd"))
             .ReturnsAsync(SignInResult.LockedOut);
 
-        IActionResult result = await fixture.Controller.Recovery(new RecoveryCodeLoginRequest { RecoveryCode = "abcd" });
+        IActionResult result = await fixture.Controller.LoginWithRecoveryCode(new RecoveryCodeLoginRequest { RecoveryCode = "abcd" });
 
         var response = Assert.IsType<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status423Locked, response.StatusCode);
@@ -173,7 +173,7 @@ public sealed class AuthMultiFactorControllerTests
         fixture.SignIn.Setup(x => x.TwoFactorRecoveryCodeSignInAsync("recovery-code"))
             .ReturnsAsync(SignInResult.Success);
 
-        IActionResult result = await fixture.Controller.Recovery(new RecoveryCodeLoginRequest { RecoveryCode = "recovery-code" });
+        IActionResult result = await fixture.Controller.LoginWithRecoveryCode(new RecoveryCodeLoginRequest { RecoveryCode = "recovery-code" });
 
         var ok = Assert.IsType<OkObjectResult>(result);
         var session = Assert.IsType<AuthSessionResponse>(ok.Value);
