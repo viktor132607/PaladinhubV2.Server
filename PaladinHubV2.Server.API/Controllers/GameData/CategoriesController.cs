@@ -2,18 +2,28 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PaladinHubV2.Server.Common.Models.GameData;
+using PaladinHubV2.Server.Data;
+using PaladinHubV2.Server.Domain.Services.GameData;
 using PaladinHubV2.Server.Domain.Services.GameDataAdmin;
 
 namespace PaladinHubV2.Server.API.Controllers.GameData;
 
 [ApiController, Authorize(Roles = "Admin"), Route("Admin/api/categories")]
-public sealed class CategoriesController(
-	CategoryAdminService categories) : ControllerBase
+public sealed class CategoriesController : ControllerBase
 {
+	private readonly CategoryAdminService _categories;
+
+	public CategoriesController(
+		AppDbContext db,
+		GameDataAssignmentService assignments)
+	{
+		_categories = new CategoryAdminService(db, assignments);
+	}
+
 	[HttpGet]
 	public async Task<IActionResult> List(CancellationToken ct)
 	{
-		return Ok(await categories.ListAsync(ct));
+		return Ok(await _categories.ListAsync(ct));
 	}
 
 	[HttpGet("{id:int}/history")]
@@ -21,7 +31,7 @@ public sealed class CategoriesController(
 		int id,
 		CancellationToken ct)
 	{
-		return Ok(await categories.HistoryAsync(id, ct));
+		return Ok(await _categories.HistoryAsync(id, ct));
 	}
 
 	[HttpPost, ValidateAntiForgeryToken]
@@ -29,7 +39,7 @@ public sealed class CategoriesController(
 		CategoryRequest request,
 		CancellationToken ct)
 	{
-		CategoryAdminResult result = await categories.CreateAsync(
+		CategoryAdminResult result = await _categories.CreateAsync(
 			request,
 			Actor(),
 			ct);
@@ -48,7 +58,7 @@ public sealed class CategoriesController(
 		CategoryRequest request,
 		CancellationToken ct)
 	{
-		CategoryAdminResult result = await categories.UpdateAsync(
+		CategoryAdminResult result = await _categories.UpdateAsync(
 			id,
 			request,
 			Actor(),
@@ -71,7 +81,7 @@ public sealed class CategoriesController(
 		[FromQuery] int version,
 		CancellationToken ct)
 	{
-		CategoryAdminResult result = await categories.DeleteAsync(
+		CategoryAdminResult result = await _categories.DeleteAsync(
 			id,
 			version,
 			Actor(),
@@ -94,7 +104,7 @@ public sealed class CategoriesController(
 		RevisionRestoreRequest request,
 		CancellationToken ct)
 	{
-		CategoryAdminResult result = await categories.RestoreAsync(
+		CategoryAdminResult result = await _categories.RestoreAsync(
 			id,
 			request,
 			Actor(),
