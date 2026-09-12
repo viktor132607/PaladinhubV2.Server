@@ -132,6 +132,7 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 						options.SignIn
 							.RequireConfirmedEmail = false;
 
+						options.SignIn
 							.RequireConfirmedPhoneNumber = false;
 					})
 				.AddEntityFrameworkStores<AppDbContext>()
