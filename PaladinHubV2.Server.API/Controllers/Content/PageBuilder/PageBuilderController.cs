@@ -1,12 +1,9 @@
-using System;
-using System.Linq;
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using PaladinHub.Areas.Admin.Models;
 using PaladinHubV2.Server.Data;
 using PaladinHubV2.Server.Data.Entities;
+using PaladinHubV2.Server.Domain.Services.PageBuilder;
 
 namespace PaladinHubV2.Server.API.Controllers.Content.PageBuilder
 {
@@ -16,74 +13,18 @@ namespace PaladinHubV2.Server.API.Controllers.Content.PageBuilder
 	[Route("Admin/PageBuilder")]
 	public sealed class PageBuilderController : ControllerBase
 	{
-		private readonly AppDbContext _db;
+		private readonly PageBuilderAdminService _pages;
 
 		public PageBuilderController(AppDbContext db)
 		{
-			_db = db;
-		}
-
-		private static string NormalizeSection(string? section)
-		{
-			var normalized = (section ?? string.Empty)
-				.Trim()
-				.ToLowerInvariant();
-
-			return normalized switch
-			{
-				"holy" => "holy",
-				"protection" or "prot" => "protection",
-				"retribution" or "retri" or "ret" => "retribution",
-				_ => "holy"
-			};
-		}
-
-		private static string Capitalize(string value)
-		{
-			return string.IsNullOrWhiteSpace(value)
-				? value
-				: char.ToUpperInvariant(value[0]) + value[1..];
-		}
-
-		private static string Slugify(string? value)
-		{
-			var slug = (value ?? string.Empty)
-				.Trim()
-				.ToLowerInvariant();
-
-			slug = new string(
-				slug
-					.Where(character =>
-						char.IsLetterOrDigit(character) ||
-						character == '-')
-					.ToArray());
-
-			slug = string.Join(
-				"-",
-				slug.Split(
-					'-',
-					StringSplitOptions.RemoveEmptyEntries));
-
-			return string.IsNullOrWhiteSpace(slug)
-				? "page"
-				: slug;
+			_pages = new PageBuilderAdminService(db);
 		}
 
 		[HttpGet("Create")]
 		public IActionResult Create(
 			[FromQuery] string? section)
 		{
-			var normalizedSection =
-				NormalizeSection(section);
-
-			return Ok(new CreatePageViewModel
-			{
-				Section = Capitalize(normalizedSection),
-				Title = string.Empty,
-				Slug = string.Empty,
-				IsPublished = true,
-				JsonLayout = "[]"
-			});
+			return Ok(_pages.BuildCreateModel(section));
 		}
 
 		[HttpPost("~/Admin/api/pages")]
@@ -107,17 +48,8 @@ namespace PaladinHubV2.Server.API.Controllers.Content.PageBuilder
 			[FromQuery] string section,
 			[FromQuery] string slug)
 		{
-			var normalizedSection =
-				NormalizeSection(section);
-
-			var normalizedSlug =
-				Slugify(slug);
-
-			var page = await _db.ContentPages
-				.AsNoTracking()
-				.FirstOrDefaultAsync(candidate =>
-					candidate.Section == normalizedSection &&
-					candidate.Slug == normalizedSlug);
+			ContentPage? page =
+				await _pages.FindAsync(section, slug);
 
 			if (page == null)
 			{
@@ -130,7 +62,8 @@ namespace PaladinHubV2.Server.API.Controllers.Content.PageBuilder
 			return Ok(new DeletePageViewModel
 			{
 				Id = page.Id,
-				Section = Capitalize(page.Section),
+				Section =
+					PageBuilderAdminService.Capitalize(page.Section),
 				Slug = page.Slug,
 				Title = page.Title,
 				CreatedAt = page.CreatedAt
@@ -169,17 +102,8 @@ namespace PaladinHubV2.Server.API.Controllers.Content.PageBuilder
 			[FromQuery] string section,
 			[FromQuery] string slug)
 		{
-			var normalizedSection =
-				NormalizeSection(section);
-
-			var normalizedSlug =
-				Slugify(slug);
-
-			var page = await _db.ContentPages
-				.AsNoTracking()
-				.FirstOrDefaultAsync(candidate =>
-					candidate.Section == normalizedSection &&
-					candidate.Slug == normalizedSlug);
+			ContentPage? page =
+				await _pages.FindAsync(section, slug);
 
 			if (page == null)
 			{
@@ -192,7 +116,8 @@ namespace PaladinHubV2.Server.API.Controllers.Content.PageBuilder
 			return Ok(new
 			{
 				id = page.Id,
-				section = Capitalize(page.Section),
+				section =
+					PageBuilderAdminService.Capitalize(page.Section),
 				title = page.Title,
 				slug = page.Slug,
 				isPublished = page.IsPublished,
@@ -210,16 +135,11 @@ namespace PaladinHubV2.Server.API.Controllers.Content.PageBuilder
 		public async Task<IActionResult> EditPost(
 			[FromForm] EditPageRequest request)
 		{
-			var normalizedSection =
-				NormalizeSection(request.Section);
-
-			var normalizedSlug =
-				Slugify(request.Slug);
-
-			var page = await _db.ContentPages
-				.FirstOrDefaultAsync(candidate =>
-					candidate.Section == normalizedSection &&
-					candidate.Slug == normalizedSlug);
+			ContentPage? page = await _pages.UpdateAsync(
+				request.Section,
+				request.Slug,
+				request.Title,
+				request.JsonLayout);
 
 			if (page == null)
 			{
@@ -229,32 +149,18 @@ namespace PaladinHubV2.Server.API.Controllers.Content.PageBuilder
 				});
 			}
 
-			if (!string.IsNullOrWhiteSpace(request.Title))
-			{
-				page.Title = request.Title.Trim();
-			}
-
-			if (!string.IsNullOrWhiteSpace(request.JsonLayout))
-			{
-				page.JsonLayout =
-					request.JsonLayout.Trim();
-			}
-
-			page.UpdatedAt = DateTime.UtcNow;
-
-			await _db.SaveChangesAsync();
-
 			return Ok(new
 			{
 				id = page.Id,
-				section = Capitalize(page.Section),
+				section =
+					PageBuilderAdminService.Capitalize(page.Section),
 				title = page.Title,
 				slug = page.Slug,
 				isPublished = page.IsPublished,
 				jsonLayout = page.JsonLayout,
 				updatedAt = page.UpdatedAt,
 				redirectUrl =
-					$"/{Capitalize(page.Section)}/{page.Slug}"
+					$"/{PageBuilderAdminService.Capitalize(page.Section)}/{page.Slug}"
 			});
 		}
 
@@ -266,23 +172,10 @@ namespace PaladinHubV2.Server.API.Controllers.Content.PageBuilder
 				return ValidationProblem(ModelState);
 			}
 
-			var normalizedSection =
-				NormalizeSection(model.Section);
+			PageBuilderCreateResult result =
+				await _pages.CreateAsync(model);
 
-			var rawSlug =
-				string.IsNullOrWhiteSpace(model.Slug)
-					? model.Title
-					: model.Slug;
-
-			var normalizedSlug =
-				Slugify(rawSlug);
-
-			var exists = await _db.ContentPages
-				.AnyAsync(page =>
-					page.Section == normalizedSection &&
-					page.Slug == normalizedSlug);
-
-			if (exists)
+			if (result.SlugConflict)
 			{
 				return Conflict(new
 				{
@@ -291,35 +184,16 @@ namespace PaladinHubV2.Server.API.Controllers.Content.PageBuilder
 				});
 			}
 
-			var now = DateTime.UtcNow;
+			ContentPage page = result.Page!;
 
-			var page = new ContentPage
-			{
-				Section = normalizedSection,
-				Slug = normalizedSlug,
-				Title = string.IsNullOrWhiteSpace(model.Title)
-					? normalizedSlug
-					: model.Title.Trim(),
-				IsPublished = true,
-				JsonLayout =
-					string.IsNullOrWhiteSpace(model.JsonLayout)
-						? "[]"
-						: model.JsonLayout.Trim(),
-				CreatedAt = now,
-				UpdatedAt = now,
-				RowVersion = Array.Empty<byte>()
-			};
-
-			_db.ContentPages.Add(page);
-			await _db.SaveChangesAsync();
-
-			var redirectUrl =
-				$"/{Capitalize(normalizedSection)}/{normalizedSlug}";
+			string redirectUrl =
+				$"/{PageBuilderAdminService.Capitalize(page.Section)}/{page.Slug}";
 
 			return Created(redirectUrl, new
 			{
 				id = page.Id,
-				section = Capitalize(page.Section),
+				section =
+					PageBuilderAdminService.Capitalize(page.Section),
 				title = page.Title,
 				slug = page.Slug,
 				isPublished = page.IsPublished,
@@ -334,37 +208,8 @@ namespace PaladinHubV2.Server.API.Controllers.Content.PageBuilder
 			string section,
 			string slug)
 		{
-			var normalizedSection =
-				NormalizeSection(section);
-
-			var normalizedSlug =
-				Slugify(slug);
-
-			var page = await _db.ContentPages
-				.FirstOrDefaultAsync(candidate =>
-					candidate.Section == normalizedSection &&
-					candidate.Slug == normalizedSlug);
-
-			if (page != null)
-			{
-				_db.ContentPages.Remove(page);
-				await _db.SaveChangesAsync();
-			}
-
+			await _pages.DeleteAsync(section, slug);
 			return NoContent();
-		}
-
-		public sealed class EditPageRequest
-		{
-			public string Section { get; init; } =
-				string.Empty;
-
-			public string Slug { get; init; } =
-				string.Empty;
-
-			public string? Title { get; init; }
-
-			public string? JsonLayout { get; init; }
 		}
 	}
 }
