@@ -1,10 +1,8 @@
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using PaladinHubV2.Server.Data;
 using PaladinHubV2.Server.Data.Entities;
+using PaladinHubV2.Server.Domain.Services.ItemsService;
 
 namespace PaladinHubV2.Server.API.Controllers.GameData
 {
@@ -13,11 +11,11 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 	[Route("Admin/api/items")]
 	public sealed class ItemsController : ControllerBase
 	{
-		private readonly AppDbContext _db;
+		private readonly ItemAdminService _items;
 
 		public ItemsController(AppDbContext db)
 		{
-			_db = db;
+			_items = new ItemAdminService(db);
 		}
 
 		[HttpGet("create")]
@@ -37,70 +35,30 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 				return ValidationProblem(ModelState);
 			}
 
-			item.Id = 0;
-			await using var categoryTransaction = await CategoryRules.BeginAsync(_db, cancellationToken);
-            if (!await CategoryRules.CanAssignAsync(_db, item.CategoryId, null, cancellationToken))
-                return BadRequest(new { message = "Choose an active category." });
-            if (!await CategoryRules.CanAssignDisciplineAsync(_db, item.DisciplineId, null, cancellationToken))
-                return BadRequest(new { message = "Choose an active class or specialization." });
-            if (!await CategoryRules.CanAssignPatchAsync(_db, item.PatchId, null, cancellationToken))
-                return BadRequest(new { message = "Select an active patch." });
-            var rarity = item.RarityId is null ? null : await _db.ItemRarities.SingleOrDefaultAsync(r => r.Id == item.RarityId, cancellationToken);
-            if (item.RarityId is not null && (rarity is null || rarity.IsDeleted || (rarity.IsArchived && item.RarityId != null)))
-                return BadRequest(new { message = "Choose an active rarity." });
-            item.Quality = rarity?.Name;
-            if (!await MediaController.CanAssign(db: _db, item.Icon, null, cancellationToken))
-                return BadRequest(new { message = "Choose an active image from the media library." });
-            if (!await MediaController.CanAssign(db: _db, item.SecondIcon, null, cancellationToken))
-                return BadRequest(new { message = "Choose an active image from the media library." });
-            item.TagIds = (item.TagIds ?? []).Distinct().ToArray();
-            if (!await CategoryRules.CanAssignTagsAsync(_db, item.TagIds, [], cancellationToken))
-                return BadRequest(new { message = "Choose existing active tags (up to 100)." });
-			item.Name = item.Name.Trim();
-			item.Icon = NormalizeOptional(item.Icon);
-			item.SecondIcon = NormalizeOptional(item.SecondIcon);
-			item.Description = NormalizeOptional(item.Description);
-			item.Url = NormalizeOptional(item.Url);
-			item.Quality = NormalizeOptional(item.Quality);
+			ItemMutationResult result =
+				await _items.CreateAsync(
+					item,
+					cancellationToken);
 
-			_db.Items.Add(item);
-			await _db.SaveChangesAsync(cancellationToken);
+			IActionResult? error = MapMutationError(result.Error);
 
-            await categoryTransaction.CommitAsync(cancellationToken);
+			if (error != null)
+			{
+				return error;
+			}
+
 			return CreatedAtAction(
 				nameof(Details),
-				new { id = item.Id },
-				item);
+				new { id = result.Item!.Id },
+				result.Item);
 		}
 
 		[HttpGet("{id:int}/edit")]
-		public async Task<IActionResult> Edit(
+		public Task<IActionResult> Edit(
 			[FromRoute] int id,
 			CancellationToken cancellationToken)
 		{
-			if (id <= 0)
-			{
-				return BadRequest(new
-				{
-					message = "Invalid item ID."
-				});
-			}
-
-			var item = await _db.Items
-				.AsNoTracking()
-				.FirstOrDefaultAsync(
-					current => current.Id == id,
-					cancellationToken);
-
-			if (item == null)
-			{
-				return NotFound(new
-				{
-					message = "Item not found."
-				});
-			}
-
-			return Ok(item);
+			return GetItem(id, cancellationToken);
 		}
 
 		[HttpPut("{id:int}")]
@@ -114,7 +72,8 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 			{
 				return BadRequest(new
 				{
-					message = "The route ID does not match the item ID."
+					message =
+						"The route ID does not match the item ID."
 				});
 			}
 
@@ -123,13 +82,13 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 				return ValidationProblem(ModelState);
 			}
 
-			await using var categoryTransaction = await CategoryRules.BeginAsync(_db, cancellationToken);
-			var existing = await _db.Items
-				.FirstOrDefaultAsync(
-					current => current.Id == id,
+			ItemMutationResult result =
+				await _items.UpdateAsync(
+					id,
+					item,
 					cancellationToken);
 
-			if (existing == null)
+			if (result.Error == ItemMutationError.NotFound)
 			{
 				return NotFound(new
 				{
@@ -137,101 +96,30 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 				});
 			}
 
-			existing.Name = item.Name.Trim();
-            if (!await CategoryRules.CanAssignAsync(_db, item.CategoryId, existing.CategoryId, cancellationToken))
-                return BadRequest(new { message = "Choose an active category." });
-            existing.CategoryId = item.CategoryId;
-            if (!await CategoryRules.CanAssignDisciplineAsync(_db, item.DisciplineId, existing.DisciplineId, cancellationToken))
-                return BadRequest(new { message = "Choose an active class or specialization." });
-            existing.DisciplineId = item.DisciplineId;
-            if (!await CategoryRules.CanAssignPatchAsync(_db, item.PatchId, existing.PatchId, cancellationToken))
-                return BadRequest(new { message = "Select an active patch." });
-            existing.PatchId = item.PatchId;
-            var rarity = item.RarityId is null ? null : await _db.ItemRarities.SingleOrDefaultAsync(r => r.Id == item.RarityId, cancellationToken);
-            if (item.RarityId is not null && (rarity is null || rarity.IsDeleted || (rarity.IsArchived && item.RarityId != existing.RarityId)))
-                return BadRequest(new { message = "Choose an active rarity." });
-            item.Quality = rarity?.Name;
-            existing.RarityId = item.RarityId;
-            if (!await MediaController.CanAssign(db: _db, item.Icon, existing.Icon, cancellationToken))
-                return BadRequest(new { message = "Choose an active image from the media library." });
-            if (!await MediaController.CanAssign(db: _db, item.SecondIcon, existing.SecondIcon, cancellationToken))
-                return BadRequest(new { message = "Choose an active image from the media library." });
-            item.TagIds = (item.TagIds ?? []).Distinct().ToArray();
-            if (!await CategoryRules.CanAssignTagsAsync(_db, item.TagIds, existing.TagIds, cancellationToken))
-                return BadRequest(new { message = "Choose existing active tags (up to 100)." });
-            existing.TagIds = item.TagIds;
-			existing.Icon = NormalizeOptional(item.Icon);
-			existing.SecondIcon = NormalizeOptional(item.SecondIcon);
-			existing.Description = NormalizeOptional(item.Description);
-			existing.Url = NormalizeOptional(item.Url);
-			existing.ItemLevel = item.ItemLevel;
-			existing.RequiredLevel = item.RequiredLevel;
-			existing.Quality = NormalizeOptional(item.Quality);
+			IActionResult? error = MapMutationError(result.Error);
 
-			await _db.SaveChangesAsync(cancellationToken);
+			if (error != null)
+			{
+				return error;
+			}
 
-            await categoryTransaction.CommitAsync(cancellationToken);
-			return Ok(existing);
+			return Ok(result.Item);
 		}
 
 		[HttpGet("{id:int}")]
-		public async Task<IActionResult> Details(
+		public Task<IActionResult> Details(
 			[FromRoute] int id,
 			CancellationToken cancellationToken)
 		{
-			if (id <= 0)
-			{
-				return BadRequest(new
-				{
-					message = "Invalid item ID."
-				});
-			}
-
-			var item = await _db.Items
-				.AsNoTracking()
-				.FirstOrDefaultAsync(
-					current => current.Id == id,
-					cancellationToken);
-
-			if (item == null)
-			{
-				return NotFound(new
-				{
-					message = "Item not found."
-				});
-			}
-
-			return Ok(item);
+			return GetItem(id, cancellationToken);
 		}
 
 		[HttpGet("{id:int}/delete")]
-		public async Task<IActionResult> Delete(
+		public Task<IActionResult> Delete(
 			[FromRoute] int id,
 			CancellationToken cancellationToken)
 		{
-			if (id <= 0)
-			{
-				return BadRequest(new
-				{
-					message = "Invalid item ID."
-				});
-			}
-
-			var item = await _db.Items
-				.AsNoTracking()
-				.FirstOrDefaultAsync(
-					current => current.Id == id,
-					cancellationToken);
-
-			if (item == null)
-			{
-				return NotFound(new
-				{
-					message = "Item not found."
-				});
-			}
-
-			return Ok(item);
+			return GetItem(id, cancellationToken);
 		}
 
 		[HttpDelete("{id:int}")]
@@ -242,16 +130,34 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 		{
 			if (id <= 0)
 			{
-				return BadRequest(new
+				return InvalidId();
+			}
+
+			bool deleted =
+				await _items.DeleteAsync(id, cancellationToken);
+
+			if (!deleted)
+			{
+				return NotFound(new
 				{
-					message = "Invalid item ID."
+					message = "Item not found."
 				});
 			}
 
-			var item = await _db.Items
-				.FirstOrDefaultAsync(
-					current => current.Id == id,
-					cancellationToken);
+			return NoContent();
+		}
+
+		private async Task<IActionResult> GetItem(
+			int id,
+			CancellationToken cancellationToken)
+		{
+			if (id <= 0)
+			{
+				return InvalidId();
+			}
+
+			Item? item =
+				await _items.GetAsync(id, cancellationToken);
 
 			if (item == null)
 			{
@@ -261,17 +167,41 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 				});
 			}
 
-			_db.Items.Remove(item);
-			await _db.SaveChangesAsync(cancellationToken);
-
-			return NoContent();
+			return Ok(item);
 		}
 
-		private static string? NormalizeOptional(string? value)
+		private IActionResult? MapMutationError(
+			ItemMutationError error)
 		{
-			return string.IsNullOrWhiteSpace(value)
+			string? message = error switch
+			{
+				ItemMutationError.None => null,
+				ItemMutationError.InvalidCategory =>
+					"Choose an active category.",
+				ItemMutationError.InvalidDiscipline =>
+					"Choose an active class or specialization.",
+				ItemMutationError.InvalidPatch =>
+					"Select an active patch.",
+				ItemMutationError.InvalidRarity =>
+					"Choose an active rarity.",
+				ItemMutationError.InvalidMedia =>
+					"Choose an active image from the media library.",
+				ItemMutationError.InvalidTags =>
+					"Choose existing active tags (up to 100).",
+				_ => null
+			};
+
+			return message == null
 				? null
-				: value.Trim();
+				: BadRequest(new { message });
+		}
+
+		private IActionResult InvalidId()
+		{
+			return BadRequest(new
+			{
+				message = "Invalid item ID."
+			});
 		}
 	}
 }
