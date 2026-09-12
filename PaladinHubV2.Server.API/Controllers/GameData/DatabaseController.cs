@@ -29,6 +29,7 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 			[FromQuery] int pageSize = 20,
             [FromQuery] int? categoryId = null,
             [FromQuery] int? disciplineId = null,
+            [FromQuery] int? tagId = null,
 			CancellationToken cancellationToken = default)
 		{
 			var selectedEntity = ParseEntity(entity);
@@ -74,11 +75,14 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
                 if (disciplineId == 0) query = query.Where(s => s.DisciplineId == null);
                 else if (disciplineId > 0) query = query.Where(s => s.DisciplineId != null && disciplineIds.Contains(s.DisciplineId.Value));
                 if (categoryId > 0) query = query.Where(s => s.CategoryId != null && categoryIds.Contains(s.CategoryId.Value));
+                if (tagId == 0) query = query.Where(s => s.TagIds.Length == 0);
+                else if (tagId > 0) query = query.Where(s => s.TagIds.Contains(tagId.Value));
 
 				if (!string.IsNullOrWhiteSpace(normalizedSearch))
 				{
 					query = query.Where(spell =>
 						spell.Name.Contains(normalizedSearch) ||
+                        _db.GameTags.Any(t => !t.IsDeleted && spell.TagIds.Contains(t.Id) && t.Name.Contains(normalizedSearch)) ||
 						(spell.Description ?? string.Empty)
 							.Contains(normalizedSearch));
 				}
@@ -108,11 +112,14 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
                 if (disciplineId == 0) query = query.Where(i => i.DisciplineId == null);
                 else if (disciplineId > 0) query = query.Where(i => i.DisciplineId != null && disciplineIds.Contains(i.DisciplineId.Value));
                 if (categoryId > 0) query = query.Where(i => i.CategoryId != null && categoryIds.Contains(i.CategoryId.Value));
+                if (tagId == 0) query = query.Where(i => i.TagIds.Length == 0);
+                else if (tagId > 0) query = query.Where(i => i.TagIds.Contains(tagId.Value));
 
 				if (!string.IsNullOrWhiteSpace(normalizedSearch))
 				{
 					query = query.Where(item =>
 						item.Name.Contains(normalizedSearch) ||
+                        _db.GameTags.Any(t => !t.IsDeleted && item.TagIds.Contains(t.Id) && t.Name.Contains(normalizedSearch)) ||
 						(item.Description ?? string.Empty)
 							.Contains(normalizedSearch));
 				}

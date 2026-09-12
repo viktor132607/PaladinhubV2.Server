@@ -18,6 +18,8 @@ namespace PaladinHubV2.Server.Data
 		public DbSet<Item> Items => Set<Item>();
 		public DbSet<Category> Categories => Set<Category>();
         public DbSet<GameDiscipline> GameDisciplines => Set<GameDiscipline>();
+        public DbSet<GameTag> GameTags => Set<GameTag>();
+        public DbSet<TagRevision> TagRevisions => Set<TagRevision>();
         public DbSet<DisciplineRevision> DisciplineRevisions => Set<DisciplineRevision>();
 		public DbSet<CategoryRevision> CategoryRevisions => Set<CategoryRevision>();
 		public DbSet<Spell> Spells => Set<Spell>();
@@ -81,6 +83,8 @@ namespace PaladinHubV2.Server.Data
 			ConfigureSpells(builder);
             builder.Entity<Category>().HasOne<Category>().WithMany().HasForeignKey(c => c.ParentId).OnDelete(DeleteBehavior.Restrict);
             builder.Entity<GameDiscipline>().HasOne<GameDiscipline>().WithMany().HasForeignKey(c => c.ParentId).OnDelete(DeleteBehavior.Restrict);
+            builder.Entity<TagRevision>().HasOne<GameTag>().WithMany().HasForeignKey(r => r.TagId).OnDelete(DeleteBehavior.Restrict);
+            builder.Entity<TagRevision>().HasIndex(r => new { r.TagId, r.Version }).IsUnique();
             builder.Entity<DisciplineRevision>().HasOne<GameDiscipline>().WithMany().HasForeignKey(r => r.DisciplineId).OnDelete(DeleteBehavior.Restrict);
             builder.Entity<DisciplineRevision>().HasIndex(r => new { r.DisciplineId, r.Version }).IsUnique();
             builder.Entity<Spell>().HasOne<GameDiscipline>().WithMany().HasForeignKey(s => s.DisciplineId).OnDelete(DeleteBehavior.Restrict);

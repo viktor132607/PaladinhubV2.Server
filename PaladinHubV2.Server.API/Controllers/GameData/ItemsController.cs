@@ -43,6 +43,9 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
                 return BadRequest(new { message = "Choose an active category." });
             if (!await CategoryRules.CanAssignDisciplineAsync(_db, item.DisciplineId, null, cancellationToken))
                 return BadRequest(new { message = "Choose an active class or specialization." });
+            item.TagIds = (item.TagIds ?? []).Distinct().ToArray();
+            if (!await CategoryRules.CanAssignTagsAsync(_db, item.TagIds, [], cancellationToken))
+                return BadRequest(new { message = "Choose existing active tags (up to 100)." });
 			item.Name = item.Name.Trim();
 			item.Icon = NormalizeOptional(item.Icon);
 			item.SecondIcon = NormalizeOptional(item.SecondIcon);
@@ -131,6 +134,10 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
             if (!await CategoryRules.CanAssignDisciplineAsync(_db, item.DisciplineId, existing.DisciplineId, cancellationToken))
                 return BadRequest(new { message = "Choose an active class or specialization." });
             existing.DisciplineId = item.DisciplineId;
+            item.TagIds = (item.TagIds ?? []).Distinct().ToArray();
+            if (!await CategoryRules.CanAssignTagsAsync(_db, item.TagIds, existing.TagIds, cancellationToken))
+                return BadRequest(new { message = "Choose existing active tags (up to 100)." });
+            existing.TagIds = item.TagIds;
 			existing.Icon = NormalizeOptional(item.Icon);
 			existing.SecondIcon = NormalizeOptional(item.SecondIcon);
 			existing.Description = NormalizeOptional(item.Description);
