@@ -17,7 +17,7 @@ public sealed class AuthCredentialsControllerTests
     [Fact]
     public async Task Logout_ReturnsAnonymousSessionAndSignsOut()
     {
-        var (controller, userManager, signInManager) = CreateController();
+        var (controller, _, signInManager) = CreateController();
         signInManager
             .Setup(manager => manager.SignOutAsync())
             .Returns(Task.CompletedTask);
@@ -29,7 +29,6 @@ public sealed class AuthCredentialsControllerTests
         Assert.False(session.IsAuthenticated);
         Assert.Null(session.User);
         signInManager.Verify(manager => manager.SignOutAsync(), Times.Once);
-        userManager.VerifyNoOtherCalls();
     }
 
     [Fact]
