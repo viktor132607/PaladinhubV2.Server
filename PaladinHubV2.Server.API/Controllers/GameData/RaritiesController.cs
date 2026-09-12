@@ -1,133 +1,140 @@
-using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
-using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
+using PaladinHubV2.Server.Common.Models.GameData;
 using PaladinHubV2.Server.Data;
-using PaladinHubV2.Server.Data.Entities;
+using PaladinHubV2.Server.Domain.Services.GameData;
+using PaladinHubV2.Server.Domain.Services.GameDataAdmin;
 
 namespace PaladinHubV2.Server.API.Controllers.GameData;
 
 [ApiController, Authorize(Roles = "Admin"), Route("Admin/api/rarities")]
-public sealed class RaritiesController(AppDbContext db) : ControllerBase
+public sealed class RaritiesController : ControllerBase
 {
-    public sealed record RarityRequest([property: Required, MaxLength(50)] string Name,
-        [property: MaxLength(2000)] string? Description, [property: Required, RegularExpression("^#[0-9a-fA-F]{6}$")] string Color, int SortOrder, bool IsArchived, int Version);
-    public sealed record RestoreRequest(Guid RevisionId, int Version);
+	private readonly RarityAdminService _rarities;
 
-    [HttpGet]
-    public async Task<IActionResult> List(CancellationToken ct) => Ok(await db.ItemRarities.AsNoTracking()
-        .OrderBy(c => c.SortOrder).ThenBy(c => c.Name).Select(c => new {
-            c.Id, c.Name, c.Description, c.Color, parentId = (int?)null, c.SortOrder, c.IsArchived, c.IsDeleted, c.Version,
-            usageCount = db.Items.Count(i => i.RarityId == c.Id),
-            childCount = 0
-        }).ToListAsync(ct));
+	public RaritiesController(
+		AppDbContext db,
+		GameDataAssignmentService assignments)
+	{
+		_rarities = new RarityAdminService(db, assignments);
+	}
 
-    [HttpGet("{id:int}/history")]
-    public async Task<IActionResult> History(int id, CancellationToken ct) => Ok(await db.RarityRevisions
-        .AsNoTracking().Where(r => r.RarityId == id).OrderByDescending(r => r.Version).ToListAsync(ct));
+	[HttpGet]
+	public async Task<IActionResult> List(CancellationToken ct)
+	{
+		return Ok(await _rarities.ListAsync(ct));
+	}
 
-    [HttpPost, ValidateAntiForgeryToken]
-    public async Task<IActionResult> Create(RarityRequest request, CancellationToken ct)
-    {
-        await using var transaction = await CategoryRules.BeginAsync(db, ct);
-        var category = new ItemRarity();
-        var error = await Validate(category.Id, request, ct);
-        if (error is not null) return BadRequest(new { message = error });
-        Apply(category, request);
-        db.ItemRarities.Add(category);
-        await db.SaveChangesAsync(ct);
-        Record(category, "created");
-        await db.SaveChangesAsync(ct);
-        await transaction.CommitAsync(ct);
-        return Ok(category);
-    }
+	[HttpGet("{id:int}/history")]
+	public async Task<IActionResult> History(
+		int id,
+		CancellationToken ct)
+	{
+		return Ok(await _rarities.HistoryAsync(id, ct));
+	}
 
-    [HttpPut("{id:int}"), ValidateAntiForgeryToken]
-    public async Task<IActionResult> Edit(int id, RarityRequest request, CancellationToken ct)
-    {
-        await using var transaction = await CategoryRules.BeginAsync(db, ct);
-        var category = await db.ItemRarities.SingleOrDefaultAsync(c => c.Id == id && !c.IsDeleted, ct);
-        if (category is null) return NotFound();
-        if (request.Version != category.Version) return Stale();
-        var error = await Validate(id, request, ct);
-        if (error is not null) return BadRequest(new { message = error });
-        var action = category.IsArchived == request.IsArchived ? "updated" : request.IsArchived ? "archived" : "unarchived";
-        Apply(category, request);
-        category.Version++;
-        await SyncQuality(category, ct);
-        Record(category, action);
-        await db.SaveChangesAsync(ct);
-        await transaction.CommitAsync(ct);
-        return Ok(category);
-    }
+	[HttpPost, ValidateAntiForgeryToken]
+	public async Task<IActionResult> Create(
+		RarityRequest request,
+		CancellationToken ct)
+	{
+		RarityAdminResult result = await _rarities.CreateAsync(
+			request,
+			Actor(),
+			ct);
 
-    [HttpDelete("{id:int}"), ValidateAntiForgeryToken]
-    public async Task<IActionResult> Delete(int id, [FromQuery] int version, CancellationToken ct)
-    {
-        await using var transaction = await CategoryRules.BeginAsync(db, ct);
-        var category = await db.ItemRarities.SingleOrDefaultAsync(c => c.Id == id && !c.IsDeleted, ct);
-        if (category is null) return NotFound();
-        if (version != category.Version) return Stale();
-        if (await db.Items.AnyAsync(i => i.RarityId == id, ct))
-            return Conflict(new { message = "Remove this rarity from assigned records before deleting it, or archive it." });
-        category.IsDeleted = true;
-        category.Version++;
-        Record(category, "deleted");
-        await db.SaveChangesAsync(ct);
-        await transaction.CommitAsync(ct);
-        return NoContent();
-    }
+		if (result.Error == RarityAdminError.Validation)
+		{
+			return BadRequest(new { message = result.Message });
+		}
 
-    [HttpPost("{id:int}/restore"), ValidateAntiForgeryToken]
-    public async Task<IActionResult> Restore(int id, RestoreRequest request, CancellationToken ct)
-    {
-        await using var transaction = await CategoryRules.BeginAsync(db, ct);
-        var category = await db.ItemRarities.SingleOrDefaultAsync(c => c.Id == id, ct);
-        if (category is null) return NotFound();
-        if (request.Version != category.Version) return Stale();
-        var revision = await db.RarityRevisions.SingleOrDefaultAsync(r => r.Id == request.RevisionId && r.RarityId == id, ct);
-        if (revision is null) return NotFound();
-        var snapshot = JsonSerializer.Deserialize<ItemRarity>(revision.Snapshot)!;
-        if (snapshot.IsDeleted) return BadRequest(new { message = "Select a revision before deletion." });
-        var restored = new RarityRequest(snapshot.Name, snapshot.Description, snapshot.Color, snapshot.SortOrder, snapshot.IsArchived, category.Version);
-        var error = await Validate(id, restored, ct);
-        if (error is not null) return Conflict(new { message = error });
-        Apply(category, restored);
-        category.IsDeleted = false;
-        category.Version++;
-        await SyncQuality(category, ct);
-        Record(category, "restored");
-        await db.SaveChangesAsync(ct);
-        await transaction.CommitAsync(ct);
-        return Ok(category);
-    }
+		return Ok(result.Rarity);
+	}
 
-    private Task<int> SyncQuality(ItemRarity rarity, CancellationToken ct) => db.Items.Where(i => i.RarityId == rarity.Id)
-        .ExecuteUpdateAsync(setters => setters.SetProperty(i => i.Quality, rarity.Name), ct);
+	[HttpPut("{id:int}"), ValidateAntiForgeryToken]
+	public async Task<IActionResult> Edit(
+		int id,
+		RarityRequest request,
+		CancellationToken ct)
+	{
+		RarityAdminResult result = await _rarities.UpdateAsync(
+			id,
+			request,
+			Actor(),
+			ct);
 
-    private IActionResult Stale() => Conflict(new { message = "This rarity changed in another session. Refresh before saving." });
+		return result.Error switch
+		{
+			RarityAdminError.None => Ok(result.Rarity),
+			RarityAdminError.NotFound => NotFound(),
+			RarityAdminError.Stale => Stale(),
+			RarityAdminError.Validation =>
+				BadRequest(new { message = result.Message }),
+			_ => Conflict()
+		};
+	}
 
-    private async Task<string?> Validate(int id, RarityRequest request, CancellationToken ct)
-    {
-        if (string.IsNullOrWhiteSpace(request.Name)) return "Name is required.";
-        var name = request.Name.Trim().ToLowerInvariant();
-        return await db.ItemRarities.AnyAsync(t => t.Id != id && !t.IsDeleted && t.Name.ToLower() == name, ct)
-            ? "A rarity with this name already exists." : null;
-    }
+	[HttpDelete("{id:int}"), ValidateAntiForgeryToken]
+	public async Task<IActionResult> Delete(
+		int id,
+		[FromQuery] int version,
+		CancellationToken ct)
+	{
+		RarityAdminResult result = await _rarities.DeleteAsync(
+			id,
+			version,
+			Actor(),
+			ct);
 
-    private static void Apply(ItemRarity category, RarityRequest request)
-    {
-        category.Name = request.Name.Trim();
-        category.Description = request.Description?.Trim() ?? "";
-        category.Color = request.Color;
-        category.SortOrder = request.SortOrder;
-        category.IsArchived = request.IsArchived;
-    }
+		return result.Error switch
+		{
+			RarityAdminError.None => NoContent(),
+			RarityAdminError.NotFound => NotFound(),
+			RarityAdminError.Stale => Stale(),
+			RarityAdminError.InUse =>
+				Conflict(new { message = result.Message }),
+			_ => Conflict()
+		};
+	}
 
-    private void Record(ItemRarity category, string action) => db.RarityRevisions.Add(new RarityRevision {
-        RarityId = category.Id, Version = category.Version, Action = action,
-        Actor = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "admin", Snapshot = JsonSerializer.Serialize(category)
-    });
+	[HttpPost("{id:int}/restore"), ValidateAntiForgeryToken]
+	public async Task<IActionResult> Restore(
+		int id,
+		RevisionRestoreRequest request,
+		CancellationToken ct)
+	{
+		RarityAdminResult result = await _rarities.RestoreAsync(
+			id,
+			request,
+			Actor(),
+			ct);
+
+		return result.Error switch
+		{
+			RarityAdminError.None => Ok(result.Rarity),
+			RarityAdminError.NotFound or
+			RarityAdminError.RevisionNotFound => NotFound(),
+			RarityAdminError.Stale => Stale(),
+			RarityAdminError.DeletedRevision =>
+				BadRequest(new { message = result.Message }),
+			RarityAdminError.Validation =>
+				Conflict(new { message = result.Message }),
+			_ => Conflict()
+		};
+	}
+
+	private IActionResult Stale()
+	{
+		return Conflict(new
+		{
+			message =
+				"This rarity changed in another session. Refresh before saving."
+		});
+	}
+
+	private string Actor()
+	{
+		return User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "admin";
+	}
 }
