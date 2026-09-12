@@ -55,7 +55,9 @@ public sealed class ProductReviewsControllerTests
         IActionResult result = await controller.AddReviewApi("product-1", Review("product-1"), CancellationToken.None);
 
         ObjectResult validation = Assert.IsAssignableFrom<ObjectResult>(result);
-        Assert.Equal(StatusCodes.Status400BadRequest, validation.StatusCode);
+        ValidationProblemDetails details = Assert.IsType<ValidationProblemDetails>(validation.Value);
+        Assert.Equal(StatusCodes.Status400BadRequest, details.Status);
+        Assert.True(details.Errors.ContainsKey("Rating"));
         products.Verify(service => service.AddReviewAsync(It.IsAny<AddReviewInput>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
