@@ -50,7 +50,8 @@ public sealed class MerchandiseControllerTests
             Page = 3,
             PageSize = 500,
             MinRating = 9,
-            SortBy = ProductSortBy.PriceDesc
+            SortBy = ProductSortBy.Price,
+            Desc = true
         };
 
         IActionResult result = await controller.Index(options, TestContext.Current.CancellationToken);
@@ -60,7 +61,8 @@ public sealed class MerchandiseControllerTests
         Assert.Equal(3, model.Query.Page);
         Assert.Equal(200, model.Query.PageSize);
         Assert.Equal(5, model.Query.MinRating);
-        Assert.Equal(ProductSortBy.PriceDesc, model.Query.SortBy);
+        Assert.Equal(ProductSortBy.Price, model.Query.SortBy);
+        Assert.True(model.Query.Desc);
         Assert.Equal(new[] { "Armor", "Weapons" }, model.AllCategories);
     }
 
