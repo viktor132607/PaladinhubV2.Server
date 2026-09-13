@@ -493,14 +493,18 @@ public sealed class AccessControlAdminService
         AccessControlUserRow target,
         CancellationToken cancellationToken)
     {
-        DateTimeOffset now = DateTimeOffset.UtcNow;
-        int activeAdmins = await (from membership in db.UserRoles
-                                  join user in db.Users on membership.UserId equals user.Id
-                                  where membership.RoleId == adminRoleId &&
-                                        (!user.LockoutEnd.HasValue || user.LockoutEnd <= now)
-                                  select user.Id)
+        string[] administratorIds = await db.UserRoles
+            .Where(membership => membership.RoleId == adminRoleId)
+            .Select(membership => membership.UserId)
             .Distinct()
-            .CountAsync(cancellationToken);
+            .ToArrayAsync(cancellationToken);
+        AccessControlUserRow[] administrators = await db.Users
+            .Where(user => administratorIds.Contains(user.Id))
+            .ToArrayAsync(cancellationToken);
+
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        int activeAdmins = administrators.Count(user =>
+            !user.LockoutEnd.HasValue || user.LockoutEnd <= now);
         bool targetActive = !target.LockoutEnd.HasValue || target.LockoutEnd <= now;
         int remaining = activeAdmins - (targetActive ? 1 : 0);
         if (remaining < 1)
@@ -692,8 +696,10 @@ public sealed class AccessControlAdminService
         AccessControlDbContext db,
         CancellationToken cancellationToken)
     {
-        var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
-        if (db.Database.ProviderName?.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) == true)
+        bool isNpgsql = db.Database.ProviderName?.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) == true;
+        IsolationLevel isolation = isNpgsql ? IsolationLevel.ReadCommitted : IsolationLevel.Serializable;
+        var transaction = await db.Database.BeginTransactionAsync(isolation, cancellationToken);
+        if (isNpgsql)
         {
             await db.Database.ExecuteSqlRawAsync($"SELECT pg_advisory_xact_lock({MutationAdvisoryLock})", cancellationToken);
         }
