@@ -45,3 +45,27 @@ Remaining sequence: 13 footer, 14 SEO, 15 roles/permissions, complete translatio
 Implemented versioned entries with section FKs, typed links and contacts, ordering/moving, archive and revision restore. Section deletion is blocked while entries remain. Added responsive admin editor, public data rendering, intentional-empty vs failure fallback, copyright year replacement, and stable translation keys. Default V1/V2 copyright is seeded once. Verification: client/server builds, 11 focused tests, actual SQL idempotency/preservation/FK checks in PGlite. Browser checks passed: section/contact CRUD, history restore, typed mailto links, empty-response versus outage fallback, and portrait/landscape/desktop dimensions. Explicit form-label associations were corrected after the browser checks caught ambiguous labels.
 
 Banner fixes published: Server `d66019fa7ebc73f689b2eaa9bc6baaab2c1d2acb`; Client `527684ff7c2f235c21fe16b5ade9dbd23d19dbae`.
+
+## Point 14 — SEO backend
+
+Status: verified implementation; ready for coordinated server-first publication after the client point-14 gate is green.
+
+Implemented:
+- versioned `SeoEntry` / `SeoRevision` storage with history, optimistic concurrency, archive/unarchive, soft delete and revision restore;
+- stable `PageId` support for database pages plus a constrained static-route registry; arbitrary, private, admin, alias and malformed targets are rejected;
+- normalized duplicate/conflict checks across create, edit, unarchive and restore paths;
+- canonical, social-image and URL validation, including media-reference lifecycle protection;
+- public `/api/seo/snapshot` containing only current public/indexing inputs, published Page Builder targets, registry version and deterministic snapshot version;
+- idempotent PostgreSQL upgrade/bootstrap SQL and PostgreSQL media-deactivation protection;
+- production `ClientApp:BaseUrl` and `Api:PublicBaseUrl` fallbacks for the current Render origins while deployment environment variables remain authoritative.
+
+Verification evidence:
+- Server CI run 75 completed successfully with PostgreSQL 17;
+- solution Release build completed with 0 errors;
+- catalog model/security checks passed;
+- controller + PostgreSQL integration suite: 699 total, 699 succeeded, 0 failed, 0 skipped;
+- PostgreSQL integration exercised SEO SQL/locking/media-reference behavior rather than relying only on SQLite/InMemory substitutes.
+
+Known pre-existing warnings remain outside point 14, including NU1903 advisories for `Microsoft.OpenApi` 2.0.0 and `SQLitePCLRaw.lib.e_sqlite3` 2.1.11 plus existing nullable/analyzer warnings. They did not fail the point-14 gate.
+
+Publication to `main` is source-control publication, not proof of Render deployment. The final publication SHA is recorded by the server-first fast-forward after both server and client point-14 gates are green.
