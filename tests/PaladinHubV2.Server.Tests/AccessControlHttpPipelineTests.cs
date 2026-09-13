@@ -353,6 +353,11 @@ public sealed class AccessControlHttpPipelineTests
                 services.PostConfigure<CookieAuthenticationOptions>(
                     IdentityConstants.ApplicationScheme,
                     options => options.TimeProvider = clock);
+                services.PostConfigure<SecurityStampValidatorOptions>(options =>
+                {
+                    options.TimeProvider = clock;
+                    options.ValidationInterval = TimeSpan.FromMinutes(30);
+                });
             });
         }
     }
