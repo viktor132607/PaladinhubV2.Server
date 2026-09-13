@@ -10,6 +10,7 @@ using Moq;
 using PaladinHub.Models.Auth;
 using PaladinHubV2.Server.API.Controllers.Accounts;
 using PaladinHubV2.Server.Data.Entities;
+using PaladinHubV2.Server.Domain.Services.Accounts;
 using Xunit;
 
 namespace PaladinHubV2.Server.Tests.Controllers.Accounts;
@@ -105,7 +106,8 @@ public sealed class AuthApiControllerTests
         var controller = new AuthApiController(
             antiforgery,
             signInManager,
-            userManager)
+            userManager,
+            new AuthSessionService(userManager))
         {
             ControllerContext = new ControllerContext
             {
