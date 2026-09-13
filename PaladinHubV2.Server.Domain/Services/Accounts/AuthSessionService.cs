@@ -1,17 +1,22 @@
 using Microsoft.AspNetCore.Identity;
 using PaladinHub.Models.Auth;
+using PaladinHubV2.Server.Data;
 using PaladinHubV2.Server.Data.Entities;
+using PaladinHubV2.Server.Domain.Services.Roles;
 
 namespace PaladinHubV2.Server.Domain.Services.Accounts
 {
 	public sealed class AuthSessionService
 	{
 		private readonly UserManager<User> _userManager;
+		private readonly EffectivePermissionService _permissions;
 
 		public AuthSessionService(
-			UserManager<User> userManager)
+			UserManager<User> userManager,
+			AppDbContext database)
 		{
 			_userManager = userManager;
+			_permissions = new EffectivePermissionService(database);
 		}
 
 		public async Task<AuthSessionResponse> CreateAsync(
@@ -19,6 +24,8 @@ namespace PaladinHubV2.Server.Domain.Services.Accounts
 		{
 			IList<string> roles =
 				await _userManager.GetRolesAsync(user);
+			IReadOnlyList<string> permissions =
+				await _permissions.GetEffectivePermissionsAsync(user.Id);
 
 			return new AuthSessionResponse(
 				IsAuthenticated: true,
@@ -28,7 +35,8 @@ namespace PaladinHubV2.Server.Domain.Services.Accounts
 					user.Email ?? string.Empty,
 					user.FullName,
 					user.AvatarPath,
-					roles.ToArray()));
+					roles.ToArray(),
+					permissions.ToArray()));
 		}
 	}
 }
