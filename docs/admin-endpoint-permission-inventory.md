@@ -6,7 +6,7 @@ Point 15 establishes source-of-truth catalogs for granular administration:
 - `PaladinHubV2.Server.API/Security/AdminEndpointRegistry.cs` — current administrative action inventory with HTTP method, route, controller/action, current protection and target permission;
 - `PaladinHubV2.Server.Core/Security/SystemRoleCatalog.cs` — protected system-role semantics.
 
-The executable tests are authoritative for catalog uniqueness and for coverage of every controller action currently protected by the legacy `Admin` role. The inventory deliberately also records administrative capabilities that are not discoverable from `/Admin` route prefixes.
+The executable tests are authoritative for catalog uniqueness and for coverage of every controller action currently protected by the legacy `Admin` role. The inventory deliberately also records administrative capabilities that are not discoverable from `/Admin` route prefixes. Point 15.3 adds an exhaustive middleware test that resolves and permission-checks every non-mixed registry row, so registry entries are not merely documentation.
 
 ## Resources
 
@@ -38,7 +38,7 @@ Existing `AspNetUsers`, `AspNetRoles` and `AspNetUserRoles` remain the actual Id
 
 ## 15.2 management API
 
-`/Admin/api/access-control` is the role/user management API introduced in point 15.2. It remains behind the legacy `Admin` authorization boundary until point 15.3 applies granular policies, and automatic antiforgery validation remains enabled for mutation requests.
+`/Admin/api/access-control` is the role/user management API introduced in point 15.2. Point 15.3 now puts these actions through the same centralized granular permission enforcement as the broader administrative surface. Automatic antiforgery validation remains enabled for mutation requests.
 
 Current operations are explicitly registered:
 
@@ -56,33 +56,45 @@ Current operations are explicitly registered:
 
 Management invariants include trimmed/case-insensitive role-name uniqueness, unknown-permission rejection, optimistic role versions, protected system-role name/disable/delete/permission-set rules, no implicit reassignment when deleting an in-use role, security-stamp rotation on membership changes, self-demotion protection and transaction-serialized last-active-administrator protection.
 
-## Non-`/Admin` administrative routes found during the audit
+## Runtime enforcement in 15.3
 
-The route prefix cannot be used as an authorization inventory rule. Current examples include:
+`AdminPermissionEnforcementMiddleware` is placed after authentication and before ASP.NET authorization. It resolves the current `ControllerActionDescriptor` against `AdminEndpointRegistry`, obtains the exact permission for the HTTP method/action, and evaluates that permission against the user's current database role memberships and grants.
 
-- `/api/presets` — Admin-only preset CRUD/preview;
-- `/api/talents/{key}` — Admin-only talent-tree mutation;
-- `/api/cart/archive` and legacy cart aliases — Admin-only archived cart/order views;
-- `/api/products` and `/Products` mutation aliases — Admin-only product create/edit/delete paths;
-- public product detail paths with an in-action Admin visibility override;
-- authenticated review deletion with an in-action Admin moderation override.
+Important properties:
 
-These are explicit registry entries so later permission enforcement cannot omit them.
+- authorization uses the current `AspNetUserRoles`, `RoleSecurityProfiles` and `RolePermissions` state on each permission decision rather than trusting a permission snapshot embedded in an authentication cookie;
+- disabled role profiles do not grant permissions;
+- a resource `manage` grant satisfies a supported narrower operation on that same resource;
+- lifecycle endpoints select `archive`, `delete` or `restore` permission from the posted action and rewind the request body before MVC model binding;
+- successful granular authorization supplies only a request-local `Admin` role claim so existing legacy `Authorize(Roles = "Admin")` attributes remain a secondary boundary without persisting elevation to the Identity cookie;
+- mixed-access endpoints are deliberately not blanket-locked. Their elevated branch uses `IAdminPermissionEvaluator` while their public/owner behavior remains available under its original rules.
 
-## Security debt intentionally recorded for 15.3
+The exhaustive enforcement regression test iterates every non-mixed registry row. If a registered action cannot be resolved by controller/action/HTTP method, or if it bypasses the permission decision, the test fails.
 
-15.1/15.2 inventory these issues but do not change their endpoint behavior yet:
+## Non-`/Admin` administrative routes
 
-- Page Builder preview helpers `/api/blocks/render` and `/api/blocks/render-layout` are currently unauthenticated;
-- preset POST/PUT/DELETE actions currently lack antiforgery validation;
-- `POST /api/talents/{key}` currently lacks antiforgery validation;
-- legacy `GET Products/DeleteProduct` performs a destructive product delete;
-- product visibility and review moderation contain direct `User.IsInRole("Admin")` checks instead of centralized permission authorization.
+The route prefix is not an authorization rule. Current examples include:
 
-The enforcement stage must remove or harden these paths rather than preserving them as exceptions.
+- `/api/presets` — permission-enforced preset CRUD/preview; mutation methods now use automatic antiforgery validation;
+- `/api/talents/{key}` — permission-enforced talent-tree mutation with automatic antiforgery validation;
+- `/api/cart/archive` and legacy cart aliases — permission-enforced archived cart/order views;
+- `/api/products` and `/Products` mutation aliases — permission-enforced product create/edit/delete paths;
+- public product detail paths whose hidden-state override now requires `products.read` rather than a direct Admin-role check;
+- authenticated review deletion whose moderation override now requires `product_reviews.delete` rather than a direct Admin-role check;
+- Page Builder block render/preview helpers, now protected by the registry-driven permission middleware even though they do not use a legacy Admin attribute.
+
+## 15.3 security-debt closure
+
+The security debt recorded in 15.1/15.2 is closed in this stage:
+
+- `/api/blocks/render` and `/api/blocks/render-layout` no longer execute anonymously; `page_blocks.read` is required;
+- preset POST/PUT/DELETE actions now use antiforgery validation;
+- `POST /api/talents/{key}` now uses antiforgery validation;
+- legacy `GET Products/DeleteProduct` is non-destructive and returns HTTP 405; product deletion remains on the antiforgery-protected DELETE endpoint;
+- product hidden-state visibility and review moderation no longer call `User.IsInRole("Admin")`; they use granular permission evaluation.
 
 ## Stage boundary
 
-15.1 completed the inventory/catalog/database foundation. 15.2 adds the role CRUD, validated permission replacement, user-role assignment/revocation, audit/history/restore and transactional administrator-safety business layer. It still does **not** claim granular permission enforcement on the broader admin surface.
+15.1 completed inventory/catalog/database foundation. 15.2 completed role CRUD, permission replacement, membership management, audit/history/restore and transactional administrator safety. 15.3 now completes centralized runtime granular enforcement for the registered admin surface and closes the inventoried endpoint hardening debt.
 
-Point 15.3 must replace the legacy Admin-role gates with centralized permission policies/handlers and keep an automatic guard that rejects newly added administrative actions without registry/permission mapping. Point 15.4 then proves active-session revocation and authorization behavior through the real HTTP pipeline.
+Point 15.4 still has to prove active-session authorization/revocation behavior through the real HTTP authentication pipeline, including anonymous/user/read-only/editor/admin scenarios and security-stamp/session effects. Point 15.5 remains the Roles/Users client UI and effective-permission route/menu/action gating. Point 15 as a whole is therefore not complete yet.
