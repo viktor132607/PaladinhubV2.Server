@@ -219,8 +219,8 @@ public sealed class AccessControlPostgresIntegrationTests
                 AttemptAsync(serviceOne, "admin-one", "operator-one"),
                 AttemptAsync(serviceTwo, "admin-two", "operator-two"));
 
-            Assert.Single(results.Where(result => result));
-            Assert.Single(results.Where(result => !result));
+            Assert.Single(results, result => result);
+            Assert.Single(results, result => !result);
 
             await using var verify = new NpgsqlConnection(builder.ConnectionString);
             await verify.OpenAsync(Ct);
