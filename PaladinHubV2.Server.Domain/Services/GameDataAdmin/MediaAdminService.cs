@@ -114,6 +114,8 @@ public sealed class MediaAdminService
 					comment.Content.ToLower().Contains(item.Id.ToString()))))
 			.ToListAsync(cancellationToken);
 
+		for (var index=0;index<media.Count;index++)
+            media[index]=media[index] with { UsageCount=media[index].UsageCount+await BannerUsageAsync(media[index].Id,cancellationToken) };
 		return new MediaPageResult(media, page, pages, total);
 	}
 
@@ -279,6 +281,8 @@ public sealed class MediaAdminService
 		return new MediaAdminResult(MediaAdminError.None, media.Id);
 	}
 
+    private Task<int> BannerUsageAsync(Guid id,CancellationToken ct) => _db.Database.SqlQuery<int>($"""SELECT COUNT(*)::integer AS "Value" FROM "SiteBanners" WHERE NOT "IsDeleted" AND "ImageUrl" ILIKE {'%'+id.ToString()+'%'}""").SingleAsync(ct);
+
 	private async Task<int> UsageAsync(
 		Guid id,
 		CancellationToken cancellationToken)
@@ -286,7 +290,8 @@ public sealed class MediaAdminService
 		string key = id.ToString();
 
 		return
-			await _db.Spells.CountAsync(item =>
+			await BannerUsageAsync(id,cancellationToken) +
+            await _db.Spells.CountAsync(item =>
 				item.Icon != null &&
 				item.Icon.ToLower().Contains(key), cancellationToken) +
 			await _db.Items.CountAsync(item =>
