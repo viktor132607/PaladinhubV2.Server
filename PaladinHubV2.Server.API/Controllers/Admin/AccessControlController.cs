@@ -14,12 +14,14 @@ namespace PaladinHubV2.Server.API.Controllers.Admin;
 public sealed class AccessControlController : ControllerBase
 {
     private readonly AccessControlAdminService _service;
+    private readonly AccessControlMutationGuard _guard;
 
     public AccessControlController(AppDbContext database)
     {
         string connectionString = database.Database.GetConnectionString()
             ?? throw new InvalidOperationException("Access-control database connection is unavailable.");
         _service = AccessControlAdminService.ForPostgres(connectionString);
+        _guard = AccessControlMutationGuard.ForPostgres(connectionString);
     }
 
     [HttpGet("permissions")]
@@ -56,7 +58,12 @@ public sealed class AccessControlController : ControllerBase
         [FromBody] UpdateRoleRequest request,
         CancellationToken cancellationToken)
     {
-        return ExecuteAsync(() => _service.UpdateRoleAsync(roleId, request, Actor(), cancellationToken));
+        return ExecuteAsync(async () =>
+        {
+            AccessControlActor actor = Actor();
+            await _guard.EnsureRoleUpdateIsSafeAsync(roleId, request, actor, cancellationToken);
+            return await _service.UpdateRoleAsync(roleId, request, actor, cancellationToken);
+        });
     }
 
     [HttpDelete("roles/{roleId}")]
@@ -78,7 +85,12 @@ public sealed class AccessControlController : ControllerBase
         [FromBody] ReplaceRolePermissionsRequest request,
         CancellationToken cancellationToken)
     {
-        return ExecuteAsync(() => _service.ReplacePermissionsAsync(roleId, request, Actor(), cancellationToken));
+        return ExecuteAsync(async () =>
+        {
+            AccessControlActor actor = Actor();
+            await _guard.EnsurePermissionReplacementIsSafeAsync(roleId, request, actor, cancellationToken);
+            return await _service.ReplacePermissionsAsync(roleId, request, actor, cancellationToken);
+        });
     }
 
     [HttpGet("roles/{roleId}/history")]
@@ -93,7 +105,12 @@ public sealed class AccessControlController : ControllerBase
         [FromBody] RestoreRoleRevisionRequest request,
         CancellationToken cancellationToken)
     {
-        return ExecuteAsync(() => _service.RestoreRevisionAsync(roleId, request, Actor(), cancellationToken));
+        return ExecuteAsync(async () =>
+        {
+            AccessControlActor actor = Actor();
+            await _guard.EnsureRestoreIsSafeAsync(roleId, request, actor, cancellationToken);
+            return await _service.RestoreRevisionAsync(roleId, request, actor, cancellationToken);
+        });
     }
 
     [HttpGet("roles/{roleId}/users")]
@@ -116,7 +133,9 @@ public sealed class AccessControlController : ControllerBase
     {
         return ExecuteAsync(async () =>
         {
-            await _service.AssignUserAsync(roleId, userId, Actor(), cancellationToken);
+            AccessControlActor actor = Actor();
+            await _guard.EnsureAssignmentIsSafeAsync(roleId, userId, actor, cancellationToken);
+            await _service.AssignUserAsync(roleId, userId, actor, cancellationToken);
             return (IActionResult)NoContent();
         });
     }
