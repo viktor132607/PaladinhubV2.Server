@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using PaladinHub.Areas.Admin.Models;
 using PaladinHubV2.Server.API.Controllers.Content.PageBuilder;
 using PaladinHubV2.Server.Data;
@@ -26,12 +25,10 @@ public sealed class PageBuilderEditControllerTests
     public async Task Edit_FoundPage_ReturnsFullEditorPayload()
     {
         await using AppDbContext db = CreateContext();
-        byte[] rowVersion = [1, 2, 3];
         ContentPage page = Page("protection", "tank-guide", "Tank Guide");
         page.IsPublished = false;
         page.JsonLayout = "[{\"type\":\"paragraph\"}]";
         page.UpdatedBy = "editor";
-        page.RowVersion = rowVersion;
         db.ContentPages.Add(page);
         await db.SaveChangesAsync(TestContext.Current.CancellationToken);
         var controller = CreateController(db);
@@ -44,7 +41,7 @@ public sealed class PageBuilderEditControllerTests
         Assert.Equal("tank-guide", ControllerTestSupport.ReadString(result.Value, "slug"));
         Assert.False(ControllerTestSupport.ReadBoolean(result.Value, "isPublished"));
         Assert.Equal(page.JsonLayout, ControllerTestSupport.ReadString(result.Value, "jsonLayout"));
-        Assert.Equal(Convert.ToBase64String(rowVersion), ControllerTestSupport.ReadString(result.Value, "rowVersionBase64"));
+        Assert.Equal(Convert.ToBase64String(page.RowVersion), ControllerTestSupport.ReadString(result.Value, "rowVersionBase64"));
     }
 
     [Fact]
@@ -128,13 +125,6 @@ public sealed class PageBuilderEditControllerTests
     private static PageBuilderEditController CreateController(AppDbContext db) =>
         new(new PageBuilderAdminService(db));
 
-    private static AppDbContext CreateContext()
-    {
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase($"page-builder-edit-{Guid.NewGuid():N}")
-            .ConfigureWarnings(warnings => warnings.Ignore(
-                Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning))
-            .Options;
-        return new AppDbContext(options);
-    }
+    private static AppDbContext CreateContext() =>
+        PageBuilderSqliteTestDatabase.CreateContext();
 }
