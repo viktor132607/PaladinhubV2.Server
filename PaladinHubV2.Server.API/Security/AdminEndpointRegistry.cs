@@ -31,6 +31,21 @@ public static class AdminEndpointRegistry
 
     private static readonly AdminEndpointDefinition[] Definitions =
     [
+        E("AccessControl", "Permissions", "GET", "/Admin/api/access-control/permissions", "role_permissions", "read", AdminRole, AdminPermissions.RolePermissions.Read),
+        E("AccessControl", "Roles", "GET", "/Admin/api/access-control/roles", "roles", "read", AdminRole, AdminPermissions.Roles.Read),
+        E("AccessControl", "Role", "GET", "/Admin/api/access-control/roles/{roleId}", "roles", "read", AdminRole, AdminPermissions.Roles.Read),
+        E("AccessControl", "CreateRole", "POST", "/Admin/api/access-control/roles", "roles", "create", AdminRole, AdminPermissions.Roles.Create),
+        E("AccessControl", "UpdateRole", "PUT", "/Admin/api/access-control/roles/{roleId}", "roles", "update", AdminRole, AdminPermissions.Roles.Update),
+        E("AccessControl", "DeleteRole", "DELETE", "/Admin/api/access-control/roles/{roleId}", "roles", "delete", AdminRole, AdminPermissions.Roles.Delete),
+        E("AccessControl", "ReplacePermissions", "PUT", "/Admin/api/access-control/roles/{roleId}/permissions", "role_permissions", "update", AdminRole, AdminPermissions.RolePermissions.Update),
+        E("AccessControl", "History", "GET", "/Admin/api/access-control/roles/{roleId}/history", "roles", "read", AdminRole, AdminPermissions.Roles.Read),
+        E("AccessControl", "Restore", "POST", "/Admin/api/access-control/roles/{roleId}/restore", "roles", "restore", AdminRole, AdminPermissions.Roles.Restore),
+        E("AccessControl", "RoleUsers", "GET", "/Admin/api/access-control/roles/{roleId}/users", "user_roles", "read", AdminRole, AdminPermissions.UserRoles.Read),
+        E("AccessControl", "Users", "GET", "/Admin/api/access-control/users", "users", "read", AdminRole, AdminPermissions.Users.Read),
+        E("AccessControl", "AssignUser", "POST", "/Admin/api/access-control/roles/{roleId}/users/{userId}", "user_roles", "update", AdminRole, AdminPermissions.UserRoles.Update),
+        E("AccessControl", "RevokeUser", "DELETE", "/Admin/api/access-control/roles/{roleId}/users/{userId}", "user_roles", "update", AdminRole, AdminPermissions.UserRoles.Update),
+        E("AccessControl", "Audit", "GET", "/Admin/api/access-control/audit", "roles", "read", AdminRole, AdminPermissions.Roles.Read),
+
         E("Banners", "List", "GET", "/Admin/api/banners", "banners", "read", AdminRole, AdminPermissions.Banners.Read),
         E("Banners", "History", "GET", "/Admin/api/banners/{id}/history", "banners", "read", AdminRole, AdminPermissions.Banners.Read),
         E("Banners", "Create", "POST", "/Admin/api/banners", "banners", "create", AdminRole, AdminPermissions.Banners.Create),
