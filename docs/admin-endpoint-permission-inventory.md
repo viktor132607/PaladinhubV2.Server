@@ -56,7 +56,7 @@ Current operations are explicitly registered:
 
 Management invariants include trimmed/case-insensitive role-name uniqueness, unknown-permission rejection, optimistic role versions, protected system-role name/disable/delete/permission-set rules, no implicit reassignment when deleting an in-use role, security-stamp rotation on membership changes, self-demotion protection and transaction-serialized last-active-administrator protection.
 
-## Runtime enforcement in 15.3
+## Runtime enforcement in 15.3/15.4
 
 `AdminPermissionEnforcementMiddleware` is placed after authentication and before ASP.NET authorization. It resolves the current `ControllerActionDescriptor` against `AdminEndpointRegistry`, obtains the exact permission for the HTTP method/action, and evaluates that permission against the user's current database role memberships and grants.
 
@@ -65,6 +65,7 @@ Important properties:
 - authorization uses the current `AspNetUserRoles`, `RoleSecurityProfiles` and `RolePermissions` state on each permission decision rather than trusting a permission snapshot embedded in an authentication cookie;
 - disabled role profiles do not grant permissions;
 - a resource `manage` grant satisfies a supported narrower operation on that same resource;
+- protected system roles are evaluated against `SystemRoleCatalog.RequiredPermissions`, so the protected `Admin` role receives the complete declared effective permission set even when those permissions are not materialized as individual `RolePermissions` rows;
 - lifecycle endpoints select `archive`, `delete` or `restore` permission from the posted action and rewind the request body before MVC model binding;
 - successful granular authorization supplies only a request-local `Admin` role claim so existing legacy `Authorize(Roles = "Admin")` attributes remain a secondary boundary without persisting elevation to the Identity cookie;
 - mixed-access endpoints are deliberately not blanket-locked. Their elevated branch uses `IAdminPermissionEvaluator` while their public/owner behavior remains available under its original rules.
@@ -93,8 +94,24 @@ The security debt recorded in 15.1/15.2 is closed in this stage:
 - legacy `GET Products/DeleteProduct` is non-destructive and returns HTTP 405; product deletion remains on the antiforgery-protected DELETE endpoint;
 - product hidden-state visibility and review moderation no longer call `User.IsInRole("Admin")`; they use granular permission evaluation.
 
+## 15.4 HTTP and session proof
+
+Point 15.4 executes the actual ASP.NET Core application through `WebApplicationFactory` with real Identity cookie authentication, real antiforgery login flow and a real PostgreSQL access-control database. It proves:
+
+- anonymous administrative access returns 401, including the Page Builder render helper protected by the permission middleware;
+- an ordinary authenticated user without grants returns 403;
+- a read-only custom role is allowed only its declared permission;
+- an editor custom role is allowed both permissions assigned to it;
+- the protected `Admin` system role is authorized from its declared system-role effective permission set even with zero physical grant rows;
+- replacing a custom role's permissions takes effect on the next request for an already-authenticated cookie;
+- revoking a user's role membership takes effect on the next protected request for that same cookie;
+- membership mutation changes the user's Identity security stamp;
+- after the security-stamp validation interval elapses, the pre-existing cookie is rejected by the real Identity validator.
+
+The HTTP test keeps Identity users/roles and permission state on PostgreSQL. Only the test session cache is replaced with an in-memory implementation so the authorization test is not coupled to a developer-specific distributed-cache endpoint.
+
 ## Stage boundary
 
-15.1 completed inventory/catalog/database foundation. 15.2 completed role CRUD, permission replacement, membership management, audit/history/restore and transactional administrator safety. 15.3 now completes centralized runtime granular enforcement for the registered admin surface and closes the inventoried endpoint hardening debt.
+15.1 completed inventory/catalog/database foundation. 15.2 completed role CRUD, permission replacement, membership management, audit/history/restore and transactional administrator safety. 15.3 completed centralized runtime granular enforcement and endpoint hardening. 15.4 now proves authorization and revocation semantics through real authenticated HTTP sessions.
 
-Point 15.4 still has to prove active-session authorization/revocation behavior through the real HTTP authentication pipeline, including anonymous/user/read-only/editor/admin scenarios and security-stamp/session effects. Point 15.5 remains the Roles/Users client UI and effective-permission route/menu/action gating. Point 15 as a whole is therefore not complete yet.
+Point 15.5 remains the Roles/Users client UI and effective-permission route/menu/action gating. Point 15 as a whole is therefore still not complete or published to `main`.
