@@ -20,13 +20,14 @@ public sealed class AuthRegistrationController : ControllerBase
 	public AuthRegistrationController(
 		SignInManager<User> signInManager,
 		UserManager<User> userManager,
-		RoleManager<IdentityRole> roleManager)
+		RoleManager<IdentityRole> roleManager,
+		AuthSessionService sessionService)
 	{
 		_signInManager = signInManager;
 		_userManager = userManager;
 		_registrationService =
 			new AuthRegistrationService(userManager, roleManager);
-		_sessionService = new AuthSessionService(userManager);
+		_sessionService = sessionService;
 	}
 
 	[AllowAnonymous]
