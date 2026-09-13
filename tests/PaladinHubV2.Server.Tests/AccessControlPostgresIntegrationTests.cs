@@ -1,5 +1,6 @@
 using Npgsql;
 using PaladinHubV2.Server.API.Controllers.Content;
+using PaladinHubV2.Server.Domain.Services.Roles;
 
 namespace PaladinHubV2.Server.Tests;
 
@@ -94,10 +95,22 @@ public sealed class AccessControlPostgresIntegrationTests
                 WHERE schemaname = current_schema()
                   AND indexname IN (
                       'IX_RolePermissions_PermissionId',
-                      'IX_RoleSecurityRevisions_RoleId_Version');
+                      'IX_RoleSecurityRevisions_RoleId_Version',
+                      'IX_AccessControlAuditEntries_TargetRoleId_CreatedAtUtc',
+                      'IX_AccessControlAuditEntries_TargetUserId_CreatedAtUtc');
                 """, connection))
             {
-                Assert.Equal(2L, (long)(await command.ExecuteScalarAsync(Ct))!);
+                Assert.Equal(4L, (long)(await command.ExecuteScalarAsync(Ct))!);
+            }
+
+            await using (var command = new NpgsqlCommand("""
+                SELECT COUNT(*)
+                FROM information_schema.tables
+                WHERE table_schema = current_schema()
+                  AND table_name = 'AccessControlAuditEntries';
+                """, connection))
+            {
+                Assert.Equal(1L, (long)(await command.ExecuteScalarAsync(Ct))!);
             }
 
             PostgresException deleteError = await Assert.ThrowsAsync<PostgresException>(async () =>
@@ -114,6 +127,115 @@ public sealed class AccessControlPostgresIntegrationTests
             await using var cleanup = new NpgsqlCommand(
                 $"DROP SCHEMA IF EXISTS \"{schema}\" CASCADE;",
                 connection);
+            await cleanup.ExecuteNonQueryAsync(Ct);
+        }
+    }
+
+    [Fact]
+    public async Task ConcurrentAdministratorRevocationsLeaveExactlyOneActiveAdministrator()
+    {
+        string? connectionString = Environment.GetEnvironmentVariable("SEO_POSTGRES_CONNECTION");
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            return;
+        }
+
+        string schema = "admin_race_" + Guid.NewGuid().ToString("N");
+        await using var setup = new NpgsqlConnection(connectionString);
+        await setup.OpenAsync(Ct);
+
+        try
+        {
+            await ExecuteAsync(setup, $"""
+                CREATE SCHEMA "{schema}";
+                SET search_path TO "{schema}";
+
+                CREATE TABLE "AspNetRoles" (
+                    "Id" text PRIMARY KEY,
+                    "Name" character varying(256) NULL,
+                    "NormalizedName" character varying(256) NULL,
+                    "ConcurrencyStamp" text NULL
+                );
+
+                CREATE TABLE "AspNetUsers" (
+                    "Id" text PRIMARY KEY,
+                    "UserName" character varying(256) NULL,
+                    "NormalizedUserName" character varying(256) NULL,
+                    "Email" character varying(256) NULL,
+                    "SecurityStamp" text NULL,
+                    "LockoutEnabled" boolean NOT NULL DEFAULT false,
+                    "LockoutEnd" timestamp with time zone NULL
+                );
+
+                CREATE TABLE "AspNetUserRoles" (
+                    "UserId" text NOT NULL,
+                    "RoleId" text NOT NULL,
+                    PRIMARY KEY ("UserId", "RoleId"),
+                    FOREIGN KEY ("UserId") REFERENCES "AspNetUsers" ("Id") ON DELETE CASCADE,
+                    FOREIGN KEY ("RoleId") REFERENCES "AspNetRoles" ("Id") ON DELETE CASCADE
+                );
+
+                INSERT INTO "AspNetRoles" ("Id", "Name", "NormalizedName", "ConcurrencyStamp")
+                VALUES ('role-admin', 'Admin', 'ADMIN', 'role-stamp');
+
+                INSERT INTO "AspNetUsers" (
+                    "Id", "UserName", "NormalizedUserName", "Email", "SecurityStamp", "LockoutEnabled")
+                VALUES
+                    ('admin-one', 'admin-one', 'ADMIN-ONE', 'one@example.com', 'stamp-one', true),
+                    ('admin-two', 'admin-two', 'ADMIN-TWO', 'two@example.com', 'stamp-two', true);
+
+                INSERT INTO "AspNetUserRoles" ("UserId", "RoleId") VALUES
+                    ('admin-one', 'role-admin'),
+                    ('admin-two', 'role-admin');
+                """);
+
+            await ExecuteAsync(setup, await ReadUpgradeSqlAsync());
+
+            var builder = new NpgsqlConnectionStringBuilder(connectionString)
+            {
+                SearchPath = schema
+            };
+            var serviceOne = AccessControlAdminService.ForPostgres(builder.ConnectionString);
+            var serviceTwo = AccessControlAdminService.ForPostgres(builder.ConnectionString);
+
+            async Task<bool> AttemptAsync(AccessControlAdminService service, string userId, string actorId)
+            {
+                try
+                {
+                    await service.RevokeUserAsync(
+                        "role-admin",
+                        userId,
+                        new AccessControlActor(actorId, actorId),
+                        Ct);
+                    return true;
+                }
+                catch (AccessControlAdminException exception) when (exception.Failure == AccessControlFailure.Conflict)
+                {
+                    return false;
+                }
+            }
+
+            bool[] results = await Task.WhenAll(
+                AttemptAsync(serviceOne, "admin-one", "operator-one"),
+                AttemptAsync(serviceTwo, "admin-two", "operator-two"));
+
+            Assert.Single(results.Where(result => result));
+            Assert.Single(results.Where(result => !result));
+
+            await using var verify = new NpgsqlConnection(builder.ConnectionString);
+            await verify.OpenAsync(Ct);
+            await using var command = new NpgsqlCommand("""
+                SELECT COUNT(*)
+                FROM "AspNetUserRoles"
+                WHERE "RoleId" = 'role-admin';
+                """, verify);
+            Assert.Equal(1L, (long)(await command.ExecuteScalarAsync(Ct))!);
+        }
+        finally
+        {
+            await using var cleanup = new NpgsqlCommand(
+                $"DROP SCHEMA IF EXISTS \"{schema}\" CASCADE;",
+                setup);
             await cleanup.ExecuteNonQueryAsync(Ct);
         }
     }
