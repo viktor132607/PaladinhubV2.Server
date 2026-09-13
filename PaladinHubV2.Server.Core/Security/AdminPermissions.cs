@@ -24,9 +24,6 @@ public static class AdminPermissions
     public static class Users
     {
         public const string Read = "users.read";
-        public const string Create = "users.create";
-        public const string Update = "users.update";
-        public const string Delete = "users.delete";
         public const string Manage = "users.manage";
     }
 
@@ -96,7 +93,6 @@ public static class AdminPermissions
         public const string Read = "talent_pages.read";
         public const string Create = "talent_pages.create";
         public const string Update = "talent_pages.update";
-        public const string Delete = "talent_pages.delete";
         public const string Manage = "talent_pages.manage";
     }
 
@@ -169,9 +165,7 @@ public static class AdminPermissions
     public static class Media
     {
         public const string Read = "media.read";
-        public const string Create = "media.create";
         public const string Update = "media.update";
-        public const string Archive = "media.archive";
         public const string Delete = "media.delete";
         public const string Restore = "media.restore";
         public const string Manage = "media.manage";
@@ -240,7 +234,6 @@ public static class AdminPermissions
     {
         public const string Read = "spell_icons.read";
         public const string Create = "spell_icons.create";
-        public const string Delete = "spell_icons.delete";
         public const string Manage = "spell_icons.manage";
     }
 
@@ -279,7 +272,6 @@ public static class AdminPermissions
 
     public static class ProductReviews
     {
-        public const string Read = "product_reviews.read";
         public const string Delete = "product_reviews.delete";
         public const string Manage = "product_reviews.manage";
     }
@@ -289,7 +281,6 @@ public static class AdminPermissions
         public const string Read = "promo_codes.read";
         public const string Create = "promo_codes.create";
         public const string Update = "promo_codes.update";
-        public const string Delete = "promo_codes.delete";
         public const string Manage = "promo_codes.manage";
     }
 
