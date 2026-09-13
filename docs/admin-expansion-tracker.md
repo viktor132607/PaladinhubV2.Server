@@ -69,3 +69,43 @@ Verification evidence:
 Known pre-existing warnings remain outside point 14, including NU1903 advisories for `Microsoft.OpenApi` 2.0.0 and `SQLitePCLRaw.lib.e_sqlite3` 2.1.11 plus existing nullable/analyzer warnings. They did not fail the point-14 gate.
 
 Publication to `main` is source-control publication, not proof of Render deployment. The final publication SHA is recorded by the server-first fast-forward after both server and client point-14 gates are green.
+
+## Point 15 — roles and permissions
+
+### 15.1 — inventory and persistence foundation
+
+Status: COMPLETE on `work/roles-permissions-15-1`; intentionally not merged to `main` until the later point-15 enforcement stages are ready.
+
+Implemented:
+- centralized granular permission catalog with `read`, `create`, `update`, `archive`, `delete`, `restore` and `manage` operations where the resource supports them;
+- permission coverage for users, roles, role-permission assignment, user-role assignment, Page Builder, page blocks/templates/presets, talent pages/trees, navigation, banners, footer, SEO, localization, database browsing, media, game-data resources, carts, products, reviews and promo codes;
+- protected system-role catalog with the existing `Admin` role treated as the bootstrap administrator role;
+- explicit `AdminEndpointRegistry` covering the existing legacy `Authorize(Roles = "Admin")` controller actions, Admin-only routes outside `/Admin`, mixed-access actions with an Admin override, and currently public Page Builder helper endpoints that require later hardening;
+- reflection coverage that fails when an existing legacy Admin-authorized controller action is missing from the registry or references an unknown permission;
+- role security persistence model for role profiles, role-permission grants and versioned security revisions;
+- idempotent PostgreSQL `roles-permissions` upgrade that preserves existing Identity roles and memberships, protects referenced roles through FK constraints, and can be executed repeatedly;
+- API startup wiring for the embedded roles/permissions database upgrade resource;
+- Admin bootstrap grants for the complete known permission catalog without replacing existing Identity user-role membership.
+
+Inventory findings intentionally deferred to the enforcement stage:
+- `/api/presets` create/update/delete mutations are Admin-only but currently lack antiforgery validation;
+- `/api/talents/{key}` save is Admin-only but currently lacks antiforgery validation;
+- legacy `/Products/DeleteProduct` remains a destructive GET and must be removed or converted;
+- Page Builder block preview helpers are currently public and are explicitly inventoried for permission hardening;
+- product details and review deletion contain mixed normal-user/Admin behavior and therefore require permission-aware override logic instead of a blanket route lock.
+
+Verification evidence:
+- Server CI run 85 completed successfully against PostgreSQL 17;
+- solution Release build: 0 errors;
+- catalog model checks: passed;
+- full controller + PostgreSQL integration suite: 709 total, 709 succeeded, 0 failed, 0 skipped;
+- the PostgreSQL access-control integration executes the upgrade twice, verifies existing Admin membership survives, verifies the protected role profile, verifies indexes, and confirms referenced roles cannot be silently deleted;
+- the first reflection run found ten missing legacy Admin GET actions; the registry was corrected rather than weakening the reflection guard, and the final full suite passed.
+
+Scope boundary for 15.1:
+- role CRUD API, permission mutation API and user-role assignment API are not implemented yet;
+- runtime permission authorization/policies are not enforced yet; the application still uses the existing Admin-role protection until the enforcement stage replaces it safely;
+- last-active-admin concurrency protection, self-escalation protection, live permission revocation, security-stamp/session refresh, full security audit logging and restore security checks are later point-15 stages;
+- the admin Client UI and effective-permission route/menu/action gating are later point-15 stages.
+
+15.1 completion means the inventory, permission vocabulary, persistence schema, bootstrap compatibility and automated coverage gate are finished. It does not mean point 15 as a whole is complete.
