@@ -61,7 +61,7 @@ public sealed class PageBuilderDeleteControllerTests
     }
 
     [Fact]
-    public async Task DeleteApi_ExistingPage_RemovesIt()
+    public async Task DeleteApi_ExistingPage_SoftDeletesIt()
     {
         await using AppDbContext db = CreateContext();
         db.ContentPages.Add(Page("retribution", "damage", "Damage"));
@@ -70,11 +70,16 @@ public sealed class PageBuilderDeleteControllerTests
         IActionResult result = await CreateController(db).DeleteApi(" Retri ", " DAMAGE ");
 
         Assert.IsType<NoContentResult>(result);
-        Assert.Empty(db.ContentPages.IgnoreQueryFilters());
+        Assert.Empty(db.ContentPages);
+        ContentPage deleted = Assert.Single(db.ContentPages.IgnoreQueryFilters());
+        Assert.True(deleted.IsDeleted);
+        Assert.True(deleted.IsArchived);
+        Assert.False(deleted.IsPublished);
+        Assert.Contains(db.PageRevisions, revision => revision.PageId == deleted.Id && revision.Action == "deleted");
     }
 
     [Fact]
-    public async Task DeleteConfirmed_FormModel_RemovesMatchingPage()
+    public async Task DeleteConfirmed_FormModel_SoftDeletesMatchingPage()
     {
         await using AppDbContext db = CreateContext();
         ContentPage page = Page("protection", "defense", "Defense");
@@ -91,7 +96,10 @@ public sealed class PageBuilderDeleteControllerTests
         IActionResult result = await CreateController(db).DeleteConfirmed(model);
 
         Assert.IsType<NoContentResult>(result);
-        Assert.Empty(db.ContentPages.IgnoreQueryFilters());
+        Assert.Empty(db.ContentPages);
+        ContentPage deleted = Assert.Single(db.ContentPages.IgnoreQueryFilters());
+        Assert.True(deleted.IsDeleted);
+        Assert.True(deleted.IsArchived);
     }
 
     private static ContentPage Page(string section, string slug, string title) => new()
@@ -109,13 +117,6 @@ public sealed class PageBuilderDeleteControllerTests
     private static PageBuilderDeleteController CreateController(AppDbContext db) =>
         new(new PageBuilderAdminService(db));
 
-    private static AppDbContext CreateContext()
-    {
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase($"page-builder-delete-{Guid.NewGuid():N}")
-            .ConfigureWarnings(warnings => warnings.Ignore(
-                Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning))
-            .Options;
-        return new AppDbContext(options);
-    }
+    private static AppDbContext CreateContext() =>
+        PageBuilderSqliteTestDatabase.CreateContext();
 }
