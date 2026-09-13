@@ -149,3 +149,38 @@ Scope boundary for 15.2:
 - the Roles/Users admin Client UI is 15.5.
 
 15.2 completion means the backend management and transactional safety layer is in place. It does not mean point 15 as a whole is complete.
+
+### 15.3 — granular runtime permission enforcement
+
+Status: COMPLETE on `work/roles-permissions-15-3`; intentionally unmerged while point 15 remains staged.
+
+Implemented:
+- centralized `IAdminPermissionEvaluator`, `AdminPermissionRequirement`, authorization handler and `AdminPermissionEnforcementMiddleware`;
+- registry-driven authorization after authentication and before ASP.NET authorization, covering registered admin routes regardless of `/Admin` prefix;
+- current database role membership/grant evaluation for every permission decision, excluding disabled roles and allowing a resource `manage` grant to satisfy its supported narrower operations;
+- request-local compatibility elevation after a granular permission succeeds so legacy `Authorize(Roles = "Admin")` attributes remain a secondary boundary without persisting an Admin role into the Identity cookie;
+- body-aware lifecycle authorization selecting `archive`, `delete` or `restore` permission and rewinding the request body before MVC binding;
+- Page Builder `/api/blocks/render` and `/api/blocks/render-layout` preview helpers are no longer anonymous and require `page_blocks.read` through the central registry;
+- preset mutation antiforgery hardening through `AutoValidateAntiforgeryToken`;
+- talent-tree mutation antiforgery hardening through `AutoValidateAntiforgeryToken`;
+- legacy product deletion GET is now non-destructive and returns HTTP 405; the DELETE mutation remains the supported antiforgery-protected path;
+- product hidden-state visibility override now requires `products.read` rather than `User.IsInRole("Admin")`;
+- review moderation override now requires `product_reviews.delete` rather than `User.IsInRole("Admin")`;
+- mixed-access public/owner actions remain mixed instead of being incorrectly blanket-locked by the admin middleware;
+- exhaustive regression coverage iterates every non-mixed `AdminEndpointRegistry` row and proves that controller/action/HTTP-method resolution reaches a granular permission decision, including overloaded product actions and lifecycle endpoints.
+
+Verification evidence:
+- Server CI run 98 completed successfully against PostgreSQL 17;
+- Release solution build: 0 errors;
+- catalog model/security checks: passed;
+- full controller + PostgreSQL integration suite at the final 15.3 enforcement gate: 728 total, 728 succeeded, 0 failed, 0 skipped;
+- explicit tests cover anonymous 401, missing-permission 403, successful custom-role permission authorization, lifecycle permission resolution/body rewind, mixed-access bypass, permission-aware product/review overrides, antiforgery metadata and non-destructive legacy GET behavior;
+- draft PR #7 is mergeable/clean against current `main`; the branch is ahead of `main` and not behind it.
+
+Scope boundary for 15.3:
+- security-stamp rotation already occurs on membership mutations, but a real authenticated HTTP session must still prove that changed/revoked rights stop authorizing as expected; that is 15.4;
+- anonymous/user/read-only/editor/admin end-to-end HTTP authorization matrices are 15.4, not claimed by the middleware unit/integration gate here;
+- effective-permission client state, Roles/Users screens, route/menu/action hiding and responsive UI are 15.5;
+- point 15 is not merged/published to `main` yet.
+
+15.3 completion means the registered server admin surface is now granularly permission-enforced and the known endpoint-hardening debt from 15.1/15.2 is closed. It does not mean point 15 as a whole is complete.
