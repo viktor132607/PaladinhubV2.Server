@@ -62,3 +62,37 @@ public sealed class RoleSecurityRevision
 
     public RoleSecurityProfile Profile { get; set; } = null!;
 }
+
+[Index(nameof(TargetRoleId), nameof(CreatedAtUtc))]
+[Index(nameof(TargetUserId), nameof(CreatedAtUtc))]
+public sealed class AccessControlAuditEntry
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    [MaxLength(40)]
+    public string Action { get; set; } = string.Empty;
+
+    [MaxLength(450)]
+    public string ActorId { get; set; } = string.Empty;
+
+    [MaxLength(256)]
+    public string Actor { get; set; } = string.Empty;
+
+    [MaxLength(450)]
+    public string? TargetRoleId { get; set; }
+
+    [MaxLength(256)]
+    public string? TargetRoleName { get; set; }
+
+    [MaxLength(450)]
+    public string? TargetUserId { get; set; }
+
+    [MaxLength(256)]
+    public string? TargetUserName { get; set; }
+
+    public string OldState { get; set; } = "{}";
+
+    public string NewState { get; set; } = "{}";
+
+    public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+}
