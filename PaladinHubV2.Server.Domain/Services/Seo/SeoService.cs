@@ -106,6 +106,7 @@ internal sealed record SeoSnapshot(
 public sealed class SeoService
 {
     private const long MutationLockKey = 8820414;
+
     private readonly AppDbContext _db;
     private readonly GameDataAssignmentService _assignments;
 
@@ -120,20 +121,29 @@ public sealed class SeoService
 
     public async Task<IReadOnlyList<SeoAdminItem>> ListAsync(CancellationToken ct)
     {
-        List<SeoEntry> entries = await Entries.AsNoTracking()
+        List<SeoEntry> entries = await Entries
+            .AsNoTracking()
             .OrderBy(entry => entry.Path)
             .ThenBy(entry => entry.Id)
             .ToListAsync(ct);
 
-        Dictionary<int, ContentPage> pages = await _db.ContentPages
-            .IgnoreQueryFilters()
-            .AsNoTracking()
-            .Where(page => entries.Where(entry => entry.PageId.HasValue)
-                .Select(entry => entry.PageId!.Value)
-                .Contains(page.Id))
-            .ToDictionaryAsync(page => page.Id, ct);
+        int[] pageIds = entries
+            .Where(entry => entry.PageId.HasValue)
+            .Select(entry => entry.PageId!.Value)
+            .Distinct()
+            .ToArray();
 
-        return entries.Select(entry => ToAdminItem(entry, pages)).ToArray();
+        Dictionary<int, ContentPage> pages = pageIds.Length == 0
+            ? []
+            : await _db.ContentPages
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .Where(page => pageIds.Contains(page.Id))
+                .ToDictionaryAsync(page => page.Id, ct);
+
+        return entries
+            .Select(entry => ToAdminItem(entry, pages))
+            .ToArray();
     }
 
     public async Task<IReadOnlyList<SeoTargetPage>> ListPagesAsync(CancellationToken ct)
@@ -146,22 +156,34 @@ public sealed class SeoService
             .ThenBy(page => page.Title)
             .ToListAsync(ct);
 
-        return pages.Select(page =>
+        List<SeoTargetPage> targets = [];
+        foreach (ContentPage page in pages)
         {
-            SeoRouteRegistry.TryBuildDatabasePagePath(
-                page.Section,
-                page.Slug,
-                out string path,
-                out _);
-            return new SeoTargetPage(page.Id, page.Title, path, page.IsPublished);
-        }).ToArray();
+            if (!SeoRouteRegistry.TryBuildDatabasePagePath(
+                    page.Section,
+                    page.Slug,
+                    out string path,
+                    out _))
+            {
+                continue;
+            }
+
+            targets.Add(new SeoTargetPage(
+                page.Id,
+                page.Title,
+                path,
+                page.IsPublished));
+        }
+
+        return targets;
     }
 
     public async Task<IReadOnlyList<SeoHistoryItem>> HistoryAsync(
         Guid id,
         CancellationToken ct)
     {
-        return await Revisions.AsNoTracking()
+        return await Revisions
+            .AsNoTracking()
             .Where(revision => revision.EntryId == id)
             .OrderByDescending(revision => revision.Version)
             .Select(revision => new SeoHistoryItem(
@@ -204,7 +226,9 @@ public sealed class SeoService
 
         if (entry.IsDeleted || entry.IsArchived)
         {
-            return new SeoResult(409, "Restore or unarchive this SEO entry before editing it.");
+            return new SeoResult(
+                409,
+                "Restore or unarchive this SEO entry before editing it.");
         }
 
         ResolvedTargetResult targetResult = await ResolveAndValidateRelationsAsync(
@@ -246,7 +270,9 @@ public sealed class SeoService
         await using var transaction = await _assignments.BeginAsync(ct);
         await AcquireMutationLockAsync(ct);
 
-        SeoEntry? entry = await Entries.SingleOrDefaultAsync(item => item.Id == id, ct);
+        SeoEntry? entry = await Entries.SingleOrDefaultAsync(
+            item => item.Id == id,
+            ct);
         if (entry is null)
         {
             return new SeoResult(404, "SEO entry not found.");
@@ -254,7 +280,9 @@ public sealed class SeoService
 
         if (entry.Version != version)
         {
-            return new SeoResult(409, "Settings changed. Reload before continuing.");
+            return new SeoResult(
+                409,
+                "Settings changed. Reload before continuing.");
         }
 
         string normalizedAction = action?.Trim().ToLowerInvariant() ?? string.Empty;
@@ -275,7 +303,8 @@ public sealed class SeoService
                 return new SeoResult(404, "Revision not found.");
             }
 
-            SeoSnapshot? snapshot = JsonSerializer.Deserialize<SeoSnapshot>(revision.Snapshot);
+            SeoSnapshot? snapshot = JsonSerializer.Deserialize<SeoSnapshot>(
+                revision.Snapshot);
             if (snapshot is null)
             {
                 return new SeoResult(409, "The selected revision cannot be read.");
@@ -283,7 +312,9 @@ public sealed class SeoService
 
             if (snapshot.IsDeleted)
             {
-                return new SeoResult(400, "Choose a revision from before deletion.");
+                return new SeoResult(
+                    400,
+                    "Choose a revision from before deletion.");
             }
 
             SeoRequest restoreRequest = FromSnapshot(snapshot, version);
@@ -293,10 +324,8 @@ public sealed class SeoService
                 return new SeoResult(409, shapeError);
             }
 
-            ResolvedTargetResult restoreTarget = await ResolveAndValidateRelationsAsync(
-                id,
-                restoreRequest,
-                ct);
+            ResolvedTargetResult restoreTarget =
+                await ResolveAndValidateRelationsAsync(id, restoreRequest, ct);
             if (restoreTarget.Error is not null)
             {
                 return new SeoResult(409, restoreTarget.Error);
@@ -311,7 +340,9 @@ public sealed class SeoService
         {
             if (entry.IsDeleted)
             {
-                return new SeoResult(409, "Restore this SEO entry before changing its lifecycle state.");
+                return new SeoResult(
+                    409,
+                    "Restore this SEO entry before changing its lifecycle state.");
             }
 
             switch (normalizedAction)
@@ -329,10 +360,8 @@ public sealed class SeoService
                         return new SeoResult(409, shapeError);
                     }
 
-                    ResolvedTargetResult unarchiveTarget = await ResolveAndValidateRelationsAsync(
-                        id,
-                        current,
-                        ct);
+                    ResolvedTargetResult unarchiveTarget =
+                        await ResolveAndValidateRelationsAsync(id, current, ct);
                     if (unarchiveTarget.Error is not null)
                     {
                         return new SeoResult(409, unarchiveTarget.Error);
@@ -373,13 +402,18 @@ public sealed class SeoService
         List<ContentPage> pages = await _db.ContentPages
             .IgnoreQueryFilters()
             .AsNoTracking()
-            .Where(page => page.IsPublished && !page.IsDeleted && !page.IsArchived)
+            .Where(page =>
+                page.IsPublished &&
+                !page.IsDeleted &&
+                !page.IsArchived)
             .OrderBy(page => page.Section)
             .ThenBy(page => page.Slug)
             .ToListAsync(ct);
 
         Dictionary<int, ContentPage> pageMap = pages.ToDictionary(page => page.Id);
-        List<SeoEntry> candidates = await Entries.AsNoTracking()
+
+        List<SeoEntry> candidates = await Entries
+            .AsNoTracking()
             .Where(entry => !entry.IsDeleted && !entry.IsArchived)
             .OrderBy(entry => entry.Path)
             .ThenBy(entry => entry.Id)
@@ -391,11 +425,17 @@ public sealed class SeoService
             .Distinct()
             .ToArray();
 
-        HashSet<Guid> activeMedia = (await _db.SpellIcons.AsNoTracking()
-                .Where(media => mediaIds.Contains(media.Id) && !media.IsDeleted && !media.IsArchived)
-                .Select(media => media.Id)
-                .ToListAsync(ct))
-            .ToHashSet();
+        HashSet<Guid> activeMedia = mediaIds.Length == 0
+            ? []
+            : (await _db.SpellIcons
+                    .AsNoTracking()
+                    .Where(media =>
+                        mediaIds.Contains(media.Id) &&
+                        !media.IsDeleted &&
+                        !media.IsArchived)
+                    .Select(media => media.Id)
+                    .ToListAsync(ct))
+                .ToHashSet();
 
         List<SeoPublicEntry> publicEntries = [];
         foreach (SeoEntry entry in candidates)
@@ -440,23 +480,36 @@ public sealed class SeoService
                 entry.Follow));
         }
 
-        SeoPublicPage[] publicPages = pages
-            .Select(page =>
-            {
-                SeoRouteRegistry.TryBuildDatabasePagePath(
+        List<SeoPublicPage> publicPages = [];
+        foreach (ContentPage page in pages)
+        {
+            if (!SeoRouteRegistry.TryBuildDatabasePagePath(
                     page.Section,
                     page.Slug,
                     out string path,
-                    out _);
-                return new SeoPublicPage(page.Id, page.Title, path);
-            })
-            .ToArray();
+                    out _))
+            {
+                continue;
+            }
+
+            if (SeoRouteRegistry.StaticSeoTargets.Any(route =>
+                    route.Route.Equals(path, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            publicPages.Add(new SeoPublicPage(page.Id, page.Title, path));
+        }
 
         string[] staticRoutes = SeoRouteRegistry.StaticSeoTargets
             .Select(route => route.Route)
             .ToArray();
 
-        string snapshotVersion = BuildSnapshotVersion(publicEntries, publicPages);
+        string snapshotVersion = BuildSnapshotVersion(
+            publicEntries,
+            publicPages,
+            staticRoutes);
+
         return new SeoPublicSnapshot(
             normalizedSiteUrl,
             SeoRouteRegistry.Version,
@@ -486,24 +539,30 @@ public sealed class SeoService
             return "SEO and social descriptions allow at most 500 characters.";
         }
 
-        if (request.SocialImageMediaId.HasValue && !string.IsNullOrWhiteSpace(imageUrl))
+        if (request.SocialImageMediaId.HasValue &&
+            !string.IsNullOrWhiteSpace(imageUrl))
         {
             return "Choose either a media-library image or an external social image URL, not both.";
         }
 
-        if (!string.IsNullOrWhiteSpace(canonical) && !IsSafeAbsoluteHttpUrl(canonical))
+        if (!string.IsNullOrWhiteSpace(canonical) &&
+            !IsSafeAbsoluteHttpUrl(canonical))
         {
             return "Canonical URL must be an absolute HTTP/HTTPS URL without userinfo, fragments, backslashes or control characters.";
         }
 
-        if (!string.IsNullOrWhiteSpace(imageUrl) && !IsSafeAbsoluteHttpUrl(imageUrl))
+        if (!string.IsNullOrWhiteSpace(imageUrl) &&
+            !IsSafeAbsoluteHttpUrl(imageUrl))
         {
             return "External social image must be an absolute HTTP/HTTPS URL without userinfo, fragments, backslashes or control characters.";
         }
 
         if (!request.PageId.HasValue)
         {
-            if (!SeoRouteRegistry.TryResolveStaticTarget(request.Path, out SeoRouteDefinition? route, out string? routeError))
+            if (!SeoRouteRegistry.TryResolveStaticTarget(
+                    request.Path,
+                    out SeoRouteDefinition? route,
+                    out string? routeError))
             {
                 return routeError;
             }
@@ -529,16 +588,29 @@ public sealed class SeoService
         }
 
         ResolvedTarget target = targetResult.Target!;
-        bool duplicate = request.PageId.HasValue
-            ? await Entries.AnyAsync(entry =>
-                entry.Id != currentId &&
-                !entry.IsDeleted &&
-                entry.PageId == request.PageId, ct)
-            : await Entries.AnyAsync(entry =>
-                entry.Id != currentId &&
-                !entry.IsDeleted &&
-                entry.PageId == null &&
-                entry.Path.ToLower() == target.StoredPath.ToLower(), ct);
+
+        bool duplicate;
+        if (request.PageId.HasValue)
+        {
+            int pageId = request.PageId.Value;
+            duplicate = await Entries.AnyAsync(
+                entry =>
+                    entry.Id != currentId &&
+                    !entry.IsDeleted &&
+                    entry.PageId == pageId,
+                ct);
+        }
+        else
+        {
+            string storedPath = target.StoredPath.ToLower();
+            duplicate = await Entries.AnyAsync(
+                entry =>
+                    entry.Id != currentId &&
+                    !entry.IsDeleted &&
+                    entry.PageId == null &&
+                    entry.Path.ToLower() == storedPath,
+                ct);
+        }
 
         if (duplicate)
         {
@@ -553,7 +625,9 @@ public sealed class SeoService
             if (request.PageId.HasValue)
             {
                 bool collidesWithStatic = SeoRouteRegistry.StaticSeoTargets.Any(route =>
-                    route.Route.Equals(target.ResolvedPath, StringComparison.OrdinalIgnoreCase));
+                    route.Route.Equals(
+                        target.ResolvedPath,
+                        StringComparison.OrdinalIgnoreCase));
                 if (collidesWithStatic)
                 {
                     return new ResolvedTargetResult(
@@ -576,7 +650,9 @@ public sealed class SeoService
                         page.Slug,
                         out string pagePath,
                         out _) &&
-                    pagePath.Equals(target.ResolvedPath, StringComparison.OrdinalIgnoreCase));
+                    pagePath.Equals(
+                        target.ResolvedPath,
+                        StringComparison.OrdinalIgnoreCase));
 
                 if (collidesWithPage)
                 {
@@ -590,11 +666,15 @@ public sealed class SeoService
 
         if (request.SocialImageMediaId.HasValue)
         {
-            bool active = await _db.SpellIcons.AsNoTracking().AnyAsync(
-                media => media.Id == request.SocialImageMediaId.Value &&
-                         !media.IsDeleted &&
-                         !media.IsArchived,
-                ct);
+            Guid mediaId = request.SocialImageMediaId.Value;
+            bool active = await _db.SpellIcons
+                .AsNoTracking()
+                .AnyAsync(
+                    media =>
+                        media.Id == mediaId &&
+                        !media.IsDeleted &&
+                        !media.IsArchived,
+                    ct);
             if (!active)
             {
                 return new ResolvedTargetResult(
@@ -613,10 +693,11 @@ public sealed class SeoService
     {
         if (request.PageId.HasValue)
         {
+            int pageId = request.PageId.Value;
             ContentPage? page = await _db.ContentPages
                 .IgnoreQueryFilters()
                 .AsNoTracking()
-                .SingleOrDefaultAsync(item => item.Id == request.PageId.Value, ct);
+                .SingleOrDefaultAsync(item => item.Id == pageId, ct);
 
             if (page is null || page.IsDeleted || page.IsArchived)
             {
@@ -680,21 +761,27 @@ public sealed class SeoService
                 entry.Path == "*" ? "global" : "static");
         }
 
+        int pageId = entry.PageId.Value;
         ContentPage? page = await _db.ContentPages
             .IgnoreQueryFilters()
             .AsNoTracking()
-            .SingleOrDefaultAsync(item => item.Id == entry.PageId.Value, ct);
-        if (page is null)
+            .SingleOrDefaultAsync(item => item.Id == pageId, ct);
+        if (page is null ||
+            !SeoRouteRegistry.TryBuildDatabasePagePath(
+                page.Section,
+                page.Slug,
+                out string path,
+                out _))
         {
             return null;
         }
 
-        SeoRouteRegistry.TryBuildDatabasePagePath(
-            page.Section,
-            page.Slug,
-            out string path,
-            out _);
-        return new ResolvedTarget(page.Id, string.Empty, path, page.Title, "database");
+        return new ResolvedTarget(
+            page.Id,
+            string.Empty,
+            path,
+            page.Title,
+            "database");
     }
 
     private static string? ResolvePublicPath(
@@ -714,7 +801,9 @@ public sealed class SeoService
             }
 
             if (SeoRouteRegistry.StaticSeoTargets.Any(route =>
-                    route.Route.Equals(pagePath, StringComparison.OrdinalIgnoreCase)))
+                    route.Route.Equals(
+                        pagePath,
+                        StringComparison.OrdinalIgnoreCase)))
             {
                 return null;
             }
@@ -787,19 +876,14 @@ public sealed class SeoService
 
     private static bool IsSafeAbsoluteHttpUrl(string value)
     {
-        if (value.Length > 2048 ||
-            value.Any(char.IsControl) ||
-            value.Contains('\\') ||
-            !Uri.TryCreate(value, UriKind.Absolute, out Uri? uri) ||
-            uri.Scheme is not ("http" or "https") ||
-            string.IsNullOrWhiteSpace(uri.Host) ||
-            !string.IsNullOrEmpty(uri.UserInfo) ||
-            !string.IsNullOrEmpty(uri.Fragment))
-        {
-            return false;
-        }
-
-        return true;
+        return value.Length <= 2048 &&
+               !value.Any(char.IsControl) &&
+               !value.Contains('\\') &&
+               Uri.TryCreate(value, UriKind.Absolute, out Uri? uri) &&
+               uri.Scheme is "http" or "https" &&
+               !string.IsNullOrWhiteSpace(uri.Host) &&
+               string.IsNullOrEmpty(uri.UserInfo) &&
+               string.IsNullOrEmpty(uri.Fragment);
     }
 
     private static string NormalizeOrigin(string? value)
@@ -825,14 +909,19 @@ public sealed class SeoService
 
     private static string BuildSnapshotVersion(
         IEnumerable<SeoPublicEntry> entries,
-        IEnumerable<SeoPublicPage> pages)
+        IEnumerable<SeoPublicPage> pages,
+        IEnumerable<string> staticRoutes)
     {
-        string payload = string.Join(
-            '|',
-            entries.Select(entry => $"{entry.Id:N}:{entry.Version}:{entry.Path}")
+        IEnumerable<string> parts =
+            entries.Select(entry => $"e:{entry.Id:N}:{entry.Version}:{entry.Path}")
                 .Concat(pages.Select(page => $"p:{page.Id}:{page.Path}"))
-                .OrderBy(value => value, StringComparer.Ordinal));
-        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload)))
+                .Concat(staticRoutes.Select(route => $"s:{route}"))
+                .Append($"r:{SeoRouteRegistry.Version}")
+                .OrderBy(value => value, StringComparer.Ordinal);
+
+        string payload = string.Join('|', parts);
+        return Convert.ToHexString(
+                SHA256.HashData(Encoding.UTF8.GetBytes(payload)))
             .ToLowerInvariant();
     }
 
@@ -875,26 +964,43 @@ public sealed class SeoService
         IReadOnlyDictionary<int, ContentPage> pages)
     {
         ResolvedTarget? target = null;
-        if (entry.PageId.HasValue && pages.TryGetValue(entry.PageId.Value, out ContentPage? page))
-        {
+        if (entry.PageId.HasValue &&
+            pages.TryGetValue(entry.PageId.Value, out ContentPage? page) &&
             SeoRouteRegistry.TryBuildDatabasePagePath(
                 page.Section,
                 page.Slug,
                 out string pagePath,
-                out _);
-            target = new ResolvedTarget(page.Id, string.Empty, pagePath, page.Title, "database");
+                out _))
+        {
+            target = new ResolvedTarget(
+                page.Id,
+                string.Empty,
+                pagePath,
+                page.Title,
+                "database");
         }
 
         target ??= new ResolvedTarget(
-            null,
+            entry.PageId,
             entry.Path,
             entry.Path,
-            entry.Path == "*" ? "Global defaults" : entry.Path,
-            entry.Path == "*" ? "global" : "static");
+            entry.PageId.HasValue
+                ? "Unavailable target"
+                : entry.Path == "*"
+                    ? "Global defaults"
+                    : entry.Path,
+            entry.PageId.HasValue
+                ? "database"
+                : entry.Path == "*"
+                    ? "global"
+                    : "static");
+
         return ToAdminItem(entry, target);
     }
 
-    private static SeoAdminItem ToAdminItem(SeoEntry entry, ResolvedTarget? target)
+    private static SeoAdminItem ToAdminItem(
+        SeoEntry entry,
+        ResolvedTarget? target)
     {
         target ??= new ResolvedTarget(
             entry.PageId,
