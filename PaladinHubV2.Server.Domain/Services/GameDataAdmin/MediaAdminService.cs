@@ -114,8 +114,18 @@ public sealed class MediaAdminService
 					comment.Content.ToLower().Contains(item.Id.ToString()))))
 			.ToListAsync(cancellationToken);
 
-		for (var index=0;index<media.Count;index++)
-            media[index]=media[index] with { UsageCount=media[index].UsageCount+await BannerUsageAsync(media[index].Id,cancellationToken) };
+		for (var index = 0; index < media.Count; index++)
+		{
+			var item = media[index];
+			var key = item.Id.ToString();
+			var seoUsage = await _db.SeoEntries.CountAsync(
+				x => !x.IsDeleted && x.ImageUrl.ToLower().Contains(key), cancellationToken);
+			media[index] = item with
+			{
+				UsageCount = item.UsageCount + seoUsage +
+					await BannerUsageAsync(item.Id, cancellationToken)
+			};
+		}
 		return new MediaPageResult(media, page, pages, total);
 	}
 
@@ -291,6 +301,7 @@ public sealed class MediaAdminService
 
 		return
 			await BannerUsageAsync(id,cancellationToken) +
+            await _db.SeoEntries.CountAsync(x=>!x.IsDeleted&&x.ImageUrl.ToLower().Contains(key),cancellationToken) +
             await _db.Spells.CountAsync(item =>
 				item.Icon != null &&
 				item.Icon.ToLower().Contains(key), cancellationToken) +
