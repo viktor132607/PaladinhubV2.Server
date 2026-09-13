@@ -222,8 +222,7 @@ public static class SeoRouteRegistry
             candidate.Contains('\\') ||
             candidate.Contains('?') ||
             candidate.Contains('#') ||
-            candidate.Contains('%') ||
-            Uri.TryCreate(candidate, UriKind.Absolute, out _))
+            candidate.Contains('%'))
         {
             error = "The route must be a plain local path without encoding, query, fragment, backslashes or repeated separators.";
             return false;
