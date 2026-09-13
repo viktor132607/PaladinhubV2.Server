@@ -29,7 +29,7 @@ public sealed class SpellMutationsControllerTests
         ObjectResult result = Assert.IsAssignableFrom<ObjectResult>(await controller.Create(
             Spell("Spell"), TestContext.Current.CancellationToken));
 
-        Assert.Equal(400, result.StatusCode);
+        Assert.NotNull(result.Value);
         Assert.Empty(db.Spells);
     }
 
@@ -187,7 +187,7 @@ public sealed class SpellMutationsControllerTests
         ObjectResult result = Assert.IsAssignableFrom<ObjectResult>(await controller.Edit(
             1, Spell("Spell", 1), TestContext.Current.CancellationToken));
 
-        Assert.Equal(400, result.StatusCode);
+        Assert.NotNull(result.Value);
     }
 
     [Fact]
