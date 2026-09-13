@@ -2,9 +2,9 @@ using System.Security.Claims;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc.Controllers;
-using Microsoft.EntityFrameworkCore;
 using PaladinHubV2.Server.Core.Security;
 using PaladinHubV2.Server.Data;
+using PaladinHubV2.Server.Domain.Services.Roles;
 
 namespace PaladinHubV2.Server.API.Security;
 
@@ -18,13 +18,11 @@ public interface IAdminPermissionEvaluator
 
 public sealed class AdminPermissionEvaluator : IAdminPermissionEvaluator
 {
-    private readonly string _connectionString;
+    private readonly EffectivePermissionService _permissions;
 
     public AdminPermissionEvaluator(AppDbContext database)
     {
-        _connectionString = database.Database.GetConnectionString()
-            ?? throw new InvalidOperationException(
-                "Access-control database connection is unavailable.");
+        _permissions = new EffectivePermissionService(database);
     }
 
     public async Task<bool> HasPermissionAsync(
@@ -44,54 +42,10 @@ public sealed class AdminPermissionEvaluator : IAdminPermissionEvaluator
             return false;
         }
 
-        PermissionDefinition definition = AdminPermissions.All
-            .Single(permission => string.Equals(
-                permission.Id,
-                permissionId,
-                StringComparison.Ordinal));
-
-        var acceptedPermissions = new List<string> { permissionId };
-        string managePermission = $"{definition.Resource}.{AdminPermissions.Operations.Manage}";
-        if (AdminPermissions.IsKnown(managePermission))
-        {
-            acceptedPermissions.Add(managePermission);
-        }
-
-        var options = new DbContextOptionsBuilder<AccessControlDbContext>()
-            .UseNpgsql(_connectionString)
-            .Options;
-
-        await using var database = new AccessControlDbContext(options);
-
-        string[] activeSystemRoleNames = await (
-            from membership in database.UserRoles.AsNoTracking()
-            join profile in database.RoleSecurityProfiles.AsNoTracking()
-                on membership.RoleId equals profile.RoleId
-            join role in database.Roles.AsNoTracking()
-                on membership.RoleId equals role.Id
-            where membership.UserId == userId &&
-                  !profile.IsDisabled &&
-                  profile.IsSystem
-            select role.Name ?? string.Empty)
-            .ToArrayAsync(cancellationToken);
-
-        if (activeSystemRoleNames.Any(roleName =>
-                SystemRoleCatalog.Find(roleName)?.RequiredPermissions.Contains(permissionId) == true))
-        {
-            return true;
-        }
-
-        return await (
-            from membership in database.UserRoles.AsNoTracking()
-            join profile in database.RoleSecurityProfiles.AsNoTracking()
-                on membership.RoleId equals profile.RoleId
-            join grant in database.RolePermissions.AsNoTracking()
-                on membership.RoleId equals grant.RoleId
-            where membership.UserId == userId &&
-                  !profile.IsDisabled &&
-                  acceptedPermissions.Contains(grant.PermissionId)
-            select grant.PermissionId)
-            .AnyAsync(cancellationToken);
+        return await _permissions.HasPermissionAsync(
+            userId,
+            permissionId,
+            cancellationToken);
     }
 }
 
