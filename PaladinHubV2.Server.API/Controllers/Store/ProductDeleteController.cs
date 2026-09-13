@@ -25,9 +25,15 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 		}
 
 		[HttpGet("DeleteProduct")]
-		public Task<IActionResult> DeleteLegacy([FromQuery] string id)
+		public IActionResult DeleteLegacy([FromQuery] string id)
 		{
-			return DeleteCore(id);
+			_ = id;
+			return StatusCode(
+				StatusCodes.Status405MethodNotAllowed,
+				new
+				{
+					message = "Legacy product deletion by GET is disabled. Use DELETE /api/products/{id}."
+				});
 		}
 
 		private async Task<IActionResult> DeleteCore(string? id)

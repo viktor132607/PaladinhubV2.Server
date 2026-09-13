@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using PaladinHub.Models.Products;
+using PaladinHubV2.Server.API.Security;
+using PaladinHubV2.Server.Core.Security;
 using PaladinHubV2.Server.Domain.Services.Products;
 
 namespace PaladinHubV2.Server.API.Controllers.Store
@@ -14,11 +16,14 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 	public sealed class ProductReviewsController : ControllerBase
 	{
 		private readonly IProductService _productService;
+		private readonly IAdminPermissionEvaluator? _permissionEvaluator;
 
 		public ProductReviewsController(
-			IProductService productService)
+			IProductService productService,
+			IAdminPermissionEvaluator? permissionEvaluator = null)
 		{
 			_productService = productService;
+			_permissionEvaluator = permissionEvaluator;
 		}
 
 		[HttpPost("{id}/reviews")]
@@ -161,14 +166,18 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 				});
 			}
 
-			bool isAdmin =
-				User.IsInRole("Admin");
+			bool elevatedDelete =
+				_permissionEvaluator is not null &&
+				await _permissionEvaluator.HasPermissionAsync(
+					User,
+					AdminPermissions.ProductReviews.Delete,
+					cancellationToken);
 
 			bool deleted =
 				await _productService.DeleteReviewAsync(
 					reviewId,
 					userId,
-					isAdmin,
+					elevatedDelete,
 					cancellationToken);
 
 			if (!deleted)

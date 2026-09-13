@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Mvc;
 using Moq;
 using PaladinHub.Models.Products;
 using PaladinHubV2.Server.API.Controllers.Store;
+using PaladinHubV2.Server.API.Security;
+using PaladinHubV2.Server.Core.Security;
 using PaladinHubV2.Server.Domain.Services.Products;
 using Xunit;
 
@@ -142,16 +144,16 @@ public sealed class ProductReviewsControllerTests
     }
 
     [Fact]
-    public async Task DeleteReviewApi_WhenAdminAndSuccessful_ReturnsNoContentAndForwardsAdminFlag()
+    public async Task DeleteReviewApi_WhenPermissionAllowsOverride_ReturnsNoContentAndForwardsElevatedFlag()
     {
-        var (controller, products) = CreateController("admin-1", isAdmin: true);
-        products.Setup(service => service.DeleteReviewAsync(7, "admin-1", true, It.IsAny<CancellationToken>()))
+        var (controller, products) = CreateController("editor-1", elevatedDelete: true);
+        products.Setup(service => service.DeleteReviewAsync(7, "editor-1", true, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
         Assert.IsType<NoContentResult>(
             await controller.DeleteReviewApi("product-1", 7, CancellationToken.None));
 
-        products.Verify(service => service.DeleteReviewAsync(7, "admin-1", true, It.IsAny<CancellationToken>()), Times.Once);
+        products.Verify(service => service.DeleteReviewAsync(7, "editor-1", true, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -174,21 +176,25 @@ public sealed class ProductReviewsControllerTests
 
     private static (ProductReviewsController Controller, Mock<IProductService> Products) CreateController(
         string? userId,
-        bool isAdmin = false)
+        bool elevatedDelete = false)
     {
         var products = new Mock<IProductService>();
+        var permissions = new Mock<IAdminPermissionEvaluator>();
+        permissions
+            .Setup(service => service.HasPermissionAsync(
+                It.IsAny<ClaimsPrincipal>(),
+                AdminPermissions.ProductReviews.Delete,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(elevatedDelete);
+
         var claims = new List<Claim>();
         if (userId != null)
         {
             claims.Add(new Claim(ClaimTypes.NameIdentifier, userId));
         }
-        if (isAdmin)
-        {
-            claims.Add(new Claim(ClaimTypes.Role, "Admin"));
-        }
 
         var identity = new ClaimsIdentity(claims, userId == null ? null : "UnitTest");
-        var controller = new ProductReviewsController(products.Object)
+        var controller = new ProductReviewsController(products.Object, permissions.Object)
         {
             ControllerContext = new ControllerContext
             {

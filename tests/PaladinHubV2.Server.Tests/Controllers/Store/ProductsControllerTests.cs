@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Moq;
 using PaladinHubV2.Server.API.Controllers.Store;
+using PaladinHubV2.Server.API.Security;
+using PaladinHubV2.Server.Core.Security;
 using PaladinHubV2.Server.Domain.Services.Products;
 using Xunit;
 
@@ -64,7 +66,7 @@ public sealed class ProductsControllerTests
     }
 
     [Fact]
-    public async Task DetailsLegacy_ForwardsTrimmedIdUserAndAdminRole()
+    public async Task DetailsLegacy_ForwardsTrimmedIdUserAndPermissionAwareOverride()
     {
         var products = new Mock<IProductService>();
         products
@@ -74,16 +76,22 @@ public sealed class ProductsControllerTests
                 true,
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync((PaladinHub.Models.Products.ProductDetailsViewModel?)null);
+
+        var permissions = new Mock<IAdminPermissionEvaluator>();
+        permissions
+            .Setup(service => service.HasPermissionAsync(
+                It.IsAny<ClaimsPrincipal>(),
+                AdminPermissions.Products.Read,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
         var controller = CreateController(
             products.Object,
             new ClaimsPrincipal(
                 new ClaimsIdentity(
-                    new[]
-                    {
-                        new Claim(ClaimTypes.NameIdentifier, "user-1"),
-                        new Claim(ClaimTypes.Role, "Admin")
-                    },
-                    "test")));
+                    new[] { new Claim(ClaimTypes.NameIdentifier, "user-1") },
+                    "test")),
+            permissions.Object);
 
         IActionResult result = await controller.DetailsLegacy(
             "  sku-1  ",
@@ -102,9 +110,10 @@ public sealed class ProductsControllerTests
 
     private static ProductsController CreateController(
         IProductService products,
-        ClaimsPrincipal? user = null)
+        ClaimsPrincipal? user = null,
+        IAdminPermissionEvaluator? permissions = null)
     {
-        return new ProductsController(products)
+        return new ProductsController(products, permissions)
         {
             ControllerContext = new ControllerContext
             {

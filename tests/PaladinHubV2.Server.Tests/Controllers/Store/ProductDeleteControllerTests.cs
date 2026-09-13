@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Moq;
 using PaladinHubV2.Server.API.Controllers.Store;
@@ -22,15 +23,16 @@ public sealed class ProductDeleteControllerTests
     }
 
     [Fact]
-    public async Task DeleteLegacy_WhenIdMissing_ReturnsBadRequestWithoutCallingService()
+    public void DeleteLegacy_IsNonDestructiveAndReturnsMethodNotAllowed()
     {
         var service = new Mock<IProductService>();
         var controller = new ProductDeleteController(service.Object);
 
-        BadRequestObjectResult bad = Assert.IsType<BadRequestObjectResult>(
-            await controller.DeleteLegacy(""));
+        ObjectResult result = Assert.IsType<ObjectResult>(
+            controller.DeleteLegacy("product-legacy"));
 
-        Assert.Equal("Product ID is required.", ReadString(bad.Value, "message"));
+        Assert.Equal(StatusCodes.Status405MethodNotAllowed, result.StatusCode);
+        Assert.Contains("disabled", ReadString(result.Value, "message"), StringComparison.OrdinalIgnoreCase);
         service.Verify(productService => productService.Delete(It.IsAny<string>()), Times.Never);
     }
 
@@ -60,19 +62,6 @@ public sealed class ProductDeleteControllerTests
         Assert.IsType<NoContentResult>(await controller.DeleteApi("p-2"));
 
         service.Verify(productService => productService.Delete("p-2"), Times.Once);
-    }
-
-    [Fact]
-    public async Task DeleteLegacy_WhenProductExists_UsesSameDeleteContract()
-    {
-        var service = new Mock<IProductService>();
-        service.Setup(productService => productService.Delete("p-3"))
-            .ReturnsAsync(true);
-        var controller = new ProductDeleteController(service.Object);
-
-        Assert.IsType<NoContentResult>(await controller.DeleteLegacy("  p-3 "));
-
-        service.Verify(productService => productService.Delete("p-3"), Times.Once);
     }
 
     private static string? ReadString(object? value, string propertyName) =>

@@ -5,9 +5,11 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetEnv;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
+using PaladinHubV2.Server.API.Security;
 using PaladinHubV2.Server.API.ServiceExtensions;
 using PaladinHubV2.Server.Data;
 using PaladinHubV2.Server.Data.Seed;
@@ -32,6 +34,10 @@ builder.Services.Configure<ForwardedHeadersOptions>(
 builder.Services.AddPaladinHubApp(
 	builder.Configuration,
 	builder.Environment);
+
+builder.Services.AddAuthorization();
+builder.Services.AddScoped<IAdminPermissionEvaluator, AdminPermissionEvaluator>();
+builder.Services.AddScoped<IAuthorizationHandler, AdminPermissionAuthorizationHandler>();
 
 ConfigureHttpPort(builder);
 
@@ -110,6 +116,7 @@ app.UseRouting();
 app.UseCors("PaladinHubClient");
 app.UseSession();
 app.UseAuthentication();
+app.UseMiddleware<AdminPermissionEnforcementMiddleware>();
 app.UseAuthorization();
 app.Use(
 	async (context, next) =>

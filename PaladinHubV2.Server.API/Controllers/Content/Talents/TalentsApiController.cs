@@ -7,6 +7,7 @@ namespace PaladinHubV2.Server.API.Controllers.Content.Talents
 {
 	[ApiController]
 	[Authorize(Roles = "Admin")]
+	[AutoValidateAntiforgeryToken]
 	[Route("api/talents")]
 	public sealed class TalentsApiController : ControllerBase
 	{

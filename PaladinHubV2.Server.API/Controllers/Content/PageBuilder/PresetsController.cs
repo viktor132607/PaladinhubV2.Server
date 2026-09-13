@@ -11,6 +11,7 @@ namespace PaladinHubV2.Server.API.Controllers.Content.PageBuilder
 	[ApiController]
 	[Route("api/presets")]
 	[Authorize(Roles = "Admin")]
+	[AutoValidateAntiforgeryToken]
 	public sealed class PresetsController : ControllerBase
 	{
 		private readonly IDataPresetService _presets;
