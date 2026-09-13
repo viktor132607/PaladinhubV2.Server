@@ -17,7 +17,7 @@ public sealed class SeoTests
 {
     private static readonly CancellationToken Ct = TestContext.Current.CancellationToken;
 
-    private static SeoRequest Request(string path = "/") =>
+    private static SeoRequest Request(string? path = "/") =>
         new(
             null,
             path,
@@ -32,6 +32,38 @@ public sealed class SeoTests
             null,
             1);
 
+    private static ContentPage Page(
+        string section = "Guides",
+        string slug = "guide",
+        bool published = true,
+        bool archived = false,
+        bool deleted = false) =>
+        new()
+        {
+            Section = section,
+            Slug = slug,
+            Title = $"{section} {slug}",
+            JsonLayout = "[]",
+            IsPublished = published,
+            IsArchived = archived,
+            IsDeleted = deleted,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+            RowVersion = Guid.NewGuid().ToByteArray()
+        };
+
+    private static SpellIcon Media(bool archived = false, bool deleted = false) =>
+        new()
+        {
+            Id = Guid.NewGuid(),
+            Name = "Social",
+            ContentType = "image/png",
+            Content = [1],
+            IsArchived = archived,
+            IsDeleted = deleted,
+            CreatedAtUtc = DateTime.UtcNow
+        };
+
     [Theory]
     [InlineData("/Admin/Seo")]
     [InlineData("/api/seo")]
@@ -44,20 +76,26 @@ public sealed class SeoTests
     [InlineData("/Holy%2fOverview")]
     [InlineData("/unknown-public-looking-route")]
     [InlineData("/Home/Home")]
-    public void RejectsUnsafePrivateUnknownAndAliasStaticTargets(string path)
+    [InlineData("https://example.test/Holy/Overview")]
+    public void RejectsUnsafePrivateUnknownAliasAndAbsoluteStaticTargets(string path)
     {
         Assert.NotNull(SeoService.ValidateShape(Request(path)));
     }
 
-    [Fact]
-    public void StaticRegistryCanonicalizesCaseAndTrailingSlash()
+    [Theory]
+    [InlineData("/", "/")]
+    [InlineData("/HOLY/OVERVIEW/", "/Holy/Overview")]
+    [InlineData("/products/", "/products")]
+    public void StaticRegistryCanonicalizesCaseAndTrailingSlash(
+        string requested,
+        string canonical)
     {
         Assert.True(SeoRouteRegistry.TryResolveStaticTarget(
-            "/HOLY/OVERVIEW/",
+            requested,
             out SeoRouteDefinition? route,
             out string? error));
         Assert.Null(error);
-        Assert.Equal("/Holy/Overview", route!.Route);
+        Assert.Equal(canonical, route!.Route);
     }
 
     [Theory]
@@ -67,7 +105,19 @@ public sealed class SeoTests
     [InlineData("https:\\example.test\\path")]
     public void RejectsUnsafeCanonicalUrls(string canonical)
     {
-        Assert.NotNull(SeoService.ValidateShape(Request() with { CanonicalUrl = canonical }));
+        Assert.NotNull(SeoService.ValidateShape(
+            Request() with { CanonicalUrl = canonical }));
+    }
+
+    [Theory]
+    [InlineData("javascript:alert(1)")]
+    [InlineData("https://user:pass@example.test/card.png")]
+    [InlineData("https://example.test/card.png#fragment")]
+    [InlineData("https:\\example.test\\card.png")]
+    public void RejectsUnsafeExternalSocialImages(string imageUrl)
+    {
+        Assert.NotNull(SeoService.ValidateShape(
+            Request() with { ImageUrl = imageUrl }));
     }
 
     [Fact]
@@ -89,7 +139,7 @@ public sealed class SeoTests
     }
 
     [Fact]
-    public void RejectsMediaAndExternalImageAtTheSameTime()
+    public void RejectsMediaAndExternalImageAtSameTime()
     {
         Assert.NotNull(SeoService.ValidateShape(Request() with
         {
@@ -113,6 +163,7 @@ public sealed class SeoTests
         IActionResult response = await controller.Create(
             Request() with { CanonicalUrl = "javascript:alert(1)" },
             Ct);
+
         var result = Assert.IsType<ObjectResult>(response);
         Assert.Equal(400, result.StatusCode);
         Assert.Empty(db.Set<SeoEntry>());
@@ -120,7 +171,24 @@ public sealed class SeoTests
     }
 
     [Fact]
-    public async Task CreateCanonicalizesStaticTargetAndRecordsActor()
+    public async Task CreatesGlobalDefaultsWithoutCanonical()
+    {
+        await using AppDbContext db = PageBuilderSqliteTestDatabase.CreateContext();
+        SeoResult result = await new SeoService(db).SaveAsync(
+            null,
+            Request("*") with { Index = true, Follow = true },
+            "admin",
+            Ct);
+
+        Assert.Equal(201, result.Status);
+        Assert.Equal("*", result.Entry!.Path);
+        Assert.Equal("global", result.Entry.TargetType);
+        Assert.True(result.Entry.Index);
+        Assert.True(result.Entry.Follow);
+    }
+
+    [Fact]
+    public async Task CreatesStaticTargetWithCanonicalRegistryPathAndActor()
     {
         await using AppDbContext db = PageBuilderSqliteTestDatabase.CreateContext();
         var service = new SeoService(db);
@@ -163,23 +231,14 @@ public sealed class SeoTests
     public async Task DatabasePageSeoStaysAttachedAcrossSlugRename()
     {
         await using AppDbContext db = PageBuilderSqliteTestDatabase.CreateContext();
-        var page = new ContentPage
-        {
-            Section = "Guides",
-            Slug = "first",
-            Title = "Guide",
-            JsonLayout = "[]",
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow,
-            RowVersion = Guid.NewGuid().ToByteArray()
-        };
+        ContentPage page = Page(slug: "first");
         db.ContentPages.Add(page);
         await db.SaveChangesAsync(Ct);
 
         var service = new SeoService(db);
         SeoResult created = await service.SaveAsync(
             null,
-            Request() with { PageId = page.Id, Path = null },
+            Request(null) with { PageId = page.Id },
             "test",
             Ct);
         Assert.Equal(201, created.Status);
@@ -194,28 +253,40 @@ public sealed class SeoTests
         Assert.Equal("/Guides/renamed", item.ResolvedPath);
     }
 
-    [Fact]
-    public async Task DatabasePageCannotCollideWithStaticRoute()
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task RejectsArchivedOrDeletedDatabasePage(bool archived, bool deleted)
     {
         await using AppDbContext db = PageBuilderSqliteTestDatabase.CreateContext();
-        var page = new ContentPage
-        {
-            Section = "Holy",
-            Slug = "Overview",
-            Title = "Collision",
-            JsonLayout = "[]",
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow,
-            RowVersion = Guid.NewGuid().ToByteArray()
-        };
+        ContentPage page = Page(archived: archived, deleted: deleted);
         db.ContentPages.Add(page);
         await db.SaveChangesAsync(Ct);
 
         SeoResult result = await new SeoService(db).SaveAsync(
             null,
-            Request() with { PageId = page.Id, Path = null },
+            Request(null) with { PageId = page.Id },
             "test",
             Ct);
+
+        Assert.Equal(409, result.Status);
+        Assert.Empty(db.Set<SeoEntry>());
+    }
+
+    [Fact]
+    public async Task DatabasePageCannotCollideWithStaticRoute()
+    {
+        await using AppDbContext db = PageBuilderSqliteTestDatabase.CreateContext();
+        ContentPage page = Page("Holy", "Overview");
+        db.ContentPages.Add(page);
+        await db.SaveChangesAsync(Ct);
+
+        SeoResult result = await new SeoService(db).SaveAsync(
+            null,
+            Request(null) with { PageId = page.Id },
+            "test",
+            Ct);
+
         Assert.Equal(409, result.Status);
         Assert.Empty(db.Set<SeoEntry>());
     }
@@ -224,16 +295,7 @@ public sealed class SeoTests
     public async Task StaticRouteCannotCollideWithDatabasePage()
     {
         await using AppDbContext db = PageBuilderSqliteTestDatabase.CreateContext();
-        db.ContentPages.Add(new ContentPage
-        {
-            Section = "Holy",
-            Slug = "Overview",
-            Title = "Collision",
-            JsonLayout = "[]",
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow,
-            RowVersion = Guid.NewGuid().ToByteArray()
-        });
+        db.ContentPages.Add(Page("Holy", "Overview"));
         await db.SaveChangesAsync(Ct);
 
         SeoResult result = await new SeoService(db).SaveAsync(
@@ -241,22 +303,17 @@ public sealed class SeoTests
             Request("/Holy/Overview"),
             "test",
             Ct);
+
         Assert.Equal(409, result.Status);
     }
 
-    [Fact]
-    public async Task RejectsArchivedMediaReference()
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task RejectsInactiveMediaReference(bool archived, bool deleted)
     {
         await using AppDbContext db = PageBuilderSqliteTestDatabase.CreateContext();
-        var media = new SpellIcon
-        {
-            Id = Guid.NewGuid(),
-            Name = "Archived",
-            ContentType = "image/png",
-            Content = [1],
-            IsArchived = true,
-            CreatedAtUtc = DateTime.UtcNow
-        };
+        SpellIcon media = Media(archived, deleted);
         db.SpellIcons.Add(media);
         await db.SaveChangesAsync(Ct);
 
@@ -265,6 +322,7 @@ public sealed class SeoTests
             Request() with { SocialImageMediaId = media.Id },
             "test",
             Ct);
+
         Assert.Equal(409, result.Status);
         Assert.Empty(db.Set<SeoEntry>());
     }
@@ -273,14 +331,7 @@ public sealed class SeoTests
     public async Task ActiveMediaReferenceAppearsAsAbsoluteSnapshotImage()
     {
         await using AppDbContext db = PageBuilderSqliteTestDatabase.CreateContext();
-        var media = new SpellIcon
-        {
-            Id = Guid.NewGuid(),
-            Name = "Social",
-            ContentType = "image/png",
-            Content = [1],
-            CreatedAtUtc = DateTime.UtcNow
-        };
+        SpellIcon media = Media();
         db.SpellIcons.Add(media);
         await db.SaveChangesAsync(Ct);
 
@@ -296,7 +347,9 @@ public sealed class SeoTests
             "https://api.example.test",
             Ct);
         SeoPublicEntry entry = Assert.Single(snapshot.Entries);
-        Assert.Equal($"https://api.example.test/api/spell-icons/{media.Id}", entry.ImageUrl);
+        Assert.Equal(
+            $"https://api.example.test/api/spell-icons/{media.Id}",
+            entry.ImageUrl);
         Assert.Equal("https://www.example.test/", entry.CanonicalUrl);
     }
 
@@ -304,14 +357,7 @@ public sealed class SeoTests
     public async Task MediaReferencedBySeoCannotBeArchivedOrDeletedThroughMediaService()
     {
         await using AppDbContext db = PageBuilderSqliteTestDatabase.CreateContext();
-        var media = new SpellIcon
-        {
-            Id = Guid.NewGuid(),
-            Name = "Social",
-            ContentType = "image/png",
-            Content = [1],
-            CreatedAtUtc = DateTime.UtcNow
-        };
+        SpellIcon media = Media();
         db.SpellIcons.Add(media);
         await db.SaveChangesAsync(Ct);
         await new SeoService(db).SaveAsync(
@@ -320,8 +366,10 @@ public sealed class SeoTests
             "test",
             Ct);
 
-        var assignments = new GameDataAssignmentService(db);
-        var mediaService = new MediaAdminService(db, assignments);
+        var mediaService = new MediaAdminService(
+            db,
+            new GameDataAssignmentService(db));
+
         MediaAdminResult archive = await mediaService.UpdateAsync(
             media.Id,
             new MediaRequest("Social", "", "", true, media.Version),
@@ -362,11 +410,41 @@ public sealed class SeoTests
     }
 
     [Fact]
-    public async Task ArchiveAndUnarchiveRecordVersions()
+    public async Task StaleLifecycleDoesNotChangeEntryOrAddRevision()
     {
         await using AppDbContext db = PageBuilderSqliteTestDatabase.CreateContext();
         var service = new SeoService(db);
-        SeoAdminItem created = (await service.SaveAsync(null, Request(), "creator", Ct)).Entry!;
+        SeoAdminItem created = (await service.SaveAsync(
+            null,
+            Request(),
+            "test",
+            Ct)).Entry!;
+
+        SeoResult result = await service.ChangeAsync(
+            created.Id,
+            99,
+            "archive",
+            null,
+            "test",
+            Ct);
+
+        Assert.Equal(409, result.Status);
+        SeoEntry entry = await db.Set<SeoEntry>().SingleAsync(Ct);
+        Assert.False(entry.IsArchived);
+        Assert.Equal(1, entry.Version);
+        Assert.Single(db.Set<SeoRevision>());
+    }
+
+    [Fact]
+    public async Task ArchiveAndUnarchiveRecordVersionsAndActors()
+    {
+        await using AppDbContext db = PageBuilderSqliteTestDatabase.CreateContext();
+        var service = new SeoService(db);
+        SeoAdminItem created = (await service.SaveAsync(
+            null,
+            Request(),
+            "creator",
+            Ct)).Entry!;
 
         SeoResult archived = await service.ChangeAsync(
             created.Id,
@@ -390,26 +468,20 @@ public sealed class SeoTests
         Assert.False(unarchived.Entry!.IsArchived);
         Assert.Equal(3, unarchived.Entry.Version);
 
-        Assert.Equal(
-            ["created", "archive", "unarchive"],
-            await db.Set<SeoRevision>()
-                .OrderBy(item => item.Version)
-                .Select(item => item.Action)
-                .ToArrayAsync(Ct));
+        SeoRevision[] revisions = await db.Set<SeoRevision>()
+            .OrderBy(item => item.Version)
+            .ToArrayAsync(Ct);
+        Assert.Equal(["created", "archive", "unarchive"],
+            revisions.Select(item => item.Action).ToArray());
+        Assert.Equal(["creator", "archiver", "restorer"],
+            revisions.Select(item => item.Actor).ToArray());
     }
 
     [Fact]
     public async Task UnarchiveRevalidatesMediaActivity()
     {
         await using AppDbContext db = PageBuilderSqliteTestDatabase.CreateContext();
-        var media = new SpellIcon
-        {
-            Id = Guid.NewGuid(),
-            Name = "Social",
-            ContentType = "image/png",
-            Content = [1],
-            CreatedAtUtc = DateTime.UtcNow
-        };
+        SpellIcon media = Media();
         db.SpellIcons.Add(media);
         await db.SaveChangesAsync(Ct);
 
@@ -439,11 +511,15 @@ public sealed class SeoTests
     }
 
     [Fact]
-    public async Task DeleteCanOnlyRestoreANonDeletedRevision()
+    public async Task DeleteCanRestoreOnlyNonDeletedRevision()
     {
         await using AppDbContext db = PageBuilderSqliteTestDatabase.CreateContext();
         var service = new SeoService(db);
-        SeoAdminItem created = (await service.SaveAsync(null, Request(), "creator", Ct)).Entry!;
+        SeoAdminItem created = (await service.SaveAsync(
+            null,
+            Request(),
+            "creator",
+            Ct)).Entry!;
         SeoRevision original = await db.Set<SeoRevision>().SingleAsync(Ct);
 
         Assert.Equal(200, (await service.ChangeAsync(
@@ -508,39 +584,27 @@ public sealed class SeoTests
     }
 
     [Fact]
-    public async Task PublicSnapshotFiltersLifecycleInvalidRoutesAndUnpublishedPages()
+    public async Task PublicSnapshotFiltersInvalidLifecycleAndUnpublishedPages()
     {
         await using AppDbContext db = PageBuilderSqliteTestDatabase.CreateContext();
-        var published = new ContentPage
-        {
-            Section = "Guides",
-            Slug = "published",
-            Title = "Published",
-            JsonLayout = "[]",
-            IsPublished = true,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow,
-            RowVersion = Guid.NewGuid().ToByteArray()
-        };
-        var draft = new ContentPage
-        {
-            Section = "Guides",
-            Slug = "draft",
-            Title = "Draft",
-            JsonLayout = "[]",
-            IsPublished = false,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow,
-            RowVersion = Guid.NewGuid().ToByteArray()
-        };
+        ContentPage published = Page(slug: "published");
+        ContentPage draft = Page(slug: "draft", published: false);
         db.ContentPages.AddRange(published, draft);
         await db.SaveChangesAsync(Ct);
 
         var service = new SeoService(db);
         await service.SaveAsync(null, Request("*"), "test", Ct);
         await service.SaveAsync(null, Request("/products"), "test", Ct);
-        await service.SaveAsync(null, Request() with { PageId = published.Id, Path = null }, "test", Ct);
-        await service.SaveAsync(null, Request() with { PageId = draft.Id, Path = null }, "test", Ct);
+        await service.SaveAsync(
+            null,
+            Request(null) with { PageId = published.Id },
+            "test",
+            Ct);
+        await service.SaveAsync(
+            null,
+            Request(null) with { PageId = draft.Id },
+            "test",
+            Ct);
 
         db.Set<SeoEntry>().AddRange(
             new SeoEntry { Path = "/Admin/Seo", Title = "Invalid manual row" },
@@ -557,23 +621,32 @@ public sealed class SeoTests
         Assert.Contains(snapshot.Entries, item => item.Path == "/products");
         Assert.Contains(snapshot.Entries, item => item.PageId == published.Id);
         Assert.DoesNotContain(snapshot.Entries, item => item.PageId == draft.Id);
-        Assert.DoesNotContain(snapshot.Entries, item => item.Path.StartsWith("/Admin", StringComparison.OrdinalIgnoreCase));
-        Assert.DoesNotContain(snapshot.Entries, item => item.Title == "Archived" || item.Title == "Deleted");
-        Assert.DoesNotContain(snapshot.Entries, item => item.GetType().GetProperty("Actor") is not null);
+        Assert.DoesNotContain(snapshot.Entries,
+            item => item.Path.StartsWith("/Admin", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(snapshot.Entries,
+            item => item.Title is "Archived" or "Deleted");
+        Assert.NotEmpty(snapshot.SnapshotVersion);
+        Assert.Equal(SeoRouteRegistry.Version, snapshot.RegistryVersion);
     }
 
     [Fact]
     public async Task PublicControllerDoesNotExposeRevisionHistory()
     {
         await using AppDbContext db = PageBuilderSqliteTestDatabase.CreateContext();
-        await new SeoService(db).SaveAsync(null, Request(), "secret-actor", Ct);
-        var configuration = new ConfigurationBuilder()
+        await new SeoService(db).SaveAsync(
+            null,
+            Request(),
+            "secret-actor",
+            Ct);
+
+        IConfiguration configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ClientApp:BaseUrl"] = "https://www.example.test",
                 ["Api:PublicBaseUrl"] = "https://api.example.test"
             })
             .Build();
+
         var controller = new PublicSeoController(db, configuration)
         {
             ControllerContext = new ControllerContext
@@ -584,9 +657,12 @@ public sealed class SeoTests
 
         var result = Assert.IsType<OkObjectResult>(await controller.Snapshot(Ct));
         string json = System.Text.Json.JsonSerializer.Serialize(result.Value);
+
         Assert.DoesNotContain("secret-actor", json, StringComparison.Ordinal);
-        Assert.DoesNotContain("Snapshot", json, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("IsDeleted", json, StringComparison.Ordinal);
-        Assert.DoesNotContain("IsArchived", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"Actor\":", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"Snapshot\":", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"IsDeleted\":", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"IsArchived\":", json, StringComparison.Ordinal);
+        Assert.Contains("SnapshotVersion", json, StringComparison.Ordinal);
     }
 }
