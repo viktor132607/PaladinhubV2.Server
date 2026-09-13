@@ -142,13 +142,6 @@ public sealed class PageBuilderCreateControllerTests
     private static PageBuilderCreateController CreateController(AppDbContext db) =>
         new(new PageBuilderAdminService(db));
 
-    private static AppDbContext CreateContext()
-    {
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase($"page-builder-create-{Guid.NewGuid():N}")
-            .ConfigureWarnings(warnings => warnings.Ignore(
-                Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning))
-            .Options;
-        return new AppDbContext(options);
-    }
+    private static AppDbContext CreateContext() =>
+        PageBuilderSqliteTestDatabase.CreateContext();
 }
