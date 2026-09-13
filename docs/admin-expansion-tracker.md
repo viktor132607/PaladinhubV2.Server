@@ -184,3 +184,38 @@ Scope boundary for 15.3:
 - point 15 is not merged/published to `main` yet.
 
 15.3 completion means the registered server admin surface is now granularly permission-enforced and the known endpoint-hardening debt from 15.1/15.2 is closed. It does not mean point 15 as a whole is complete.
+
+### 15.4 — real HTTP authorization and active-session revocation
+
+Status: COMPLETE on `work/roles-permissions-15-4`; intentionally unmerged while the client/effective-permission stage remains.
+
+Implemented and proven through the real ASP.NET Core HTTP/authentication pipeline:
+- `Microsoft.AspNetCore.Mvc.Testing` integration coverage using the actual application entry assembly, middleware ordering, Identity cookie authentication, antiforgery endpoint/login flow, controllers and granular permission evaluator;
+- isolated PostgreSQL database per HTTP authorization run for Identity users/roles, access-control profiles/grants/audit and the actual roles-permissions upgrade;
+- anonymous access is rejected with 401 for the access-control API and for the formerly public Page Builder block-render helper;
+- an authenticated ordinary user without grants receives 403 for administrative permissions;
+- a read-only custom role with `role_permissions.read` can read the permission catalog but receives 403 for `users.read`;
+- an editor custom role with `role_permissions.read` + `users.read` receives 200 for both covered actions;
+- the protected `Admin` system role receives its full declared `SystemRoleCatalog.RequiredPermissions` at runtime even when no physical `RolePermissions` rows exist for that role;
+- discovered and fixed the 15.3 mismatch where management reported the protected Admin role's effective full permission set but the runtime evaluator previously checked only physical grant rows;
+- permission replacement is live: removing `role_permissions.read` from a still-authenticated read-only role immediately changes the next request from 200 to 403 without requiring a new login;
+- membership revocation is live for authorization: removing the editor role immediately changes the same authenticated cookie's next protected request from 200 to 403 because permissions are resolved from current database membership;
+- membership mutation rotates the user's Identity security stamp;
+- the same existing cookie remains authenticated before the configured stamp-validation interval, then is rejected after deterministic time advances past the 30-minute validation interval, proving stale-session invalidation through the real cookie validator;
+- test-only session storage is memory-backed to avoid coupling the HTTP authorization test to the developer PostgreSQL cache endpoint; authentication, Identity data, role/permission data and authorization remain on the real PostgreSQL-backed application services.
+
+Verification evidence:
+- functional Server CI run 104 completed successfully against PostgreSQL 17;
+- Release solution build: 0 errors;
+- catalog model/security checks: passed;
+- full controller + PostgreSQL + HTTP-pipeline suite: 729 total, 729 succeeded, 0 failed, 0 skipped;
+- the HTTP test uses the real `/api/auth/csrf`, `/api/auth/login` and `/api/auth/me` flow rather than injecting a fake principal;
+- authorization matrix covers anonymous, ordinary authenticated user, read-only custom role, editor custom role and protected Admin;
+- live permission revocation, membership revocation, security-stamp rotation and post-interval cookie invalidation are all asserted in the same end-to-end scenario.
+
+Scope boundary for 15.4:
+- the Roles/Users client UI, effective-permission client state, route/menu/action visibility and responsive/accessibility behavior remain 15.5;
+- point 15 is still not merged/published to `main` until the remaining client/final integration gate is complete;
+- CI verifies repository behavior; it is not evidence of Render production deployment.
+
+15.4 completion means server-side authorization semantics and active-session revocation are now proven through the real HTTP pipeline, not only through controller/unit-level tests. Point 15 as a whole is not complete until the remaining client/final integration stage is finished.
