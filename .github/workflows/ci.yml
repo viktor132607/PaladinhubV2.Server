@@ -18,6 +18,23 @@ jobs:
     name: Build and test server
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      SEO_POSTGRES_CONNECTION: Host=localhost;Port=5432;Database=paladinhub_ci;Username=postgres;Password=postgres
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: paladinhub_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d paladinhub_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - name: Checkout
@@ -43,5 +60,5 @@ jobs:
       - name: Run catalog model checks
         run: dotnet run --project tests/CatalogModelChecks/CatalogModelChecks.csproj --configuration Release --no-restore
 
-      - name: Run controller unit tests
+      - name: Run controller and PostgreSQL integration tests
         run: dotnet test --project tests/PaladinHubV2.Server.Tests/PaladinHubV2.Server.Tests.csproj --configuration Release --no-restore
