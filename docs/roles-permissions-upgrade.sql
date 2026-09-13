@@ -1,0 +1,73 @@
+-- PaladinHub V2 point 15 access-control foundation.
+-- This upgrade is intentionally additive: ASP.NET Identity keeps ownership of
+-- AspNetUsers/AspNetRoles/AspNetUserRoles and existing assignments are not
+-- rewritten. Run it after the identity/user seeder so the Admin role exists.
+
+CREATE TABLE IF NOT EXISTS "RoleSecurityProfiles" (
+    "RoleId" text PRIMARY KEY,
+    "IsSystem" boolean NOT NULL DEFAULT false,
+    "IsDisabled" boolean NOT NULL DEFAULT false,
+    "Version" integer NOT NULL DEFAULT 1,
+    "UpdatedAtUtc" timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "CK_RoleSecurityProfiles_Version" CHECK ("Version" > 0),
+    CONSTRAINT "FK_RoleSecurityProfiles_AspNetRoles_RoleId"
+        FOREIGN KEY ("RoleId") REFERENCES "AspNetRoles" ("Id") ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS "RolePermissions" (
+    "RoleId" text NOT NULL,
+    "PermissionId" character varying(128) NOT NULL,
+    "GrantedBy" character varying(256) NOT NULL DEFAULT 'migration',
+    "GrantedAtUtc" timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "PK_RolePermissions" PRIMARY KEY ("RoleId", "PermissionId"),
+    CONSTRAINT "FK_RolePermissions_RoleSecurityProfiles_RoleId"
+        FOREIGN KEY ("RoleId") REFERENCES "RoleSecurityProfiles" ("RoleId") ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS "RoleSecurityRevisions" (
+    "Id" uuid PRIMARY KEY,
+    "RoleId" text NOT NULL,
+    "Version" integer NOT NULL,
+    "Action" character varying(30) NOT NULL,
+    "Actor" character varying(256) NOT NULL,
+    "Snapshot" text NOT NULL,
+    "CreatedAtUtc" timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "CK_RoleSecurityRevisions_Version" CHECK ("Version" > 0),
+    CONSTRAINT "FK_RoleSecurityRevisions_RoleSecurityProfiles_RoleId"
+        FOREIGN KEY ("RoleId") REFERENCES "RoleSecurityProfiles" ("RoleId") ON DELETE RESTRICT
+);
+
+CREATE INDEX IF NOT EXISTS "IX_RolePermissions_PermissionId"
+    ON "RolePermissions" ("PermissionId");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "IX_RoleSecurityRevisions_RoleId_Version"
+    ON "RoleSecurityRevisions" ("RoleId", "Version");
+
+-- Create security profiles for every role that already exists. This preserves
+-- all existing ASP.NET Identity role membership rows exactly as they are.
+INSERT INTO "RoleSecurityProfiles" (
+    "RoleId",
+    "IsSystem",
+    "IsDisabled",
+    "Version",
+    "UpdatedAtUtc")
+SELECT
+    role."Id",
+    lower(role."Name") = 'admin',
+    false,
+    1,
+    CURRENT_TIMESTAMP
+FROM "AspNetRoles" role
+ON CONFLICT ("RoleId") DO NOTHING;
+
+-- The legacy Admin role is the protected system administrator role. Never let
+-- an old profile leave it disabled after upgrading an existing database.
+UPDATE "RoleSecurityProfiles" profile
+SET
+    "IsSystem" = true,
+    "IsDisabled" = false,
+    "UpdatedAtUtc" = CURRENT_TIMESTAMP
+FROM "AspNetRoles" role
+WHERE profile."RoleId" = role."Id"
+  AND lower(role."Name") = 'admin'
+  AND (profile."IsSystem" = false OR profile."IsDisabled" = true);
