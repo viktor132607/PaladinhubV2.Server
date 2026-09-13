@@ -29,6 +29,7 @@
     <EmbeddedResource Include="../docs/rarities-upgrade.sql" LogicalName="DatabaseUpgrades.Rarities.sql" />
     <EmbeddedResource Include="../docs/media-upgrade.sql" LogicalName="DatabaseUpgrades.Media.sql" />
     <EmbeddedResource Include="../docs/navigation-upgrade.sql" LogicalName="DatabaseUpgrades.Navigation.sql" />
+    <EmbeddedResource Include="../docs/seo-upgrade.sql" LogicalName="DatabaseUpgrades.Seo.sql" />
     <EmbeddedResource Include="../docs/footer-upgrade.sql" LogicalName="DatabaseUpgrades.Footer.sql" />
     <EmbeddedResource Include="../docs/banners-upgrade.sql" LogicalName="DatabaseUpgrades.Banners.sql" />
     <EmbeddedResource Include="../docs/localization-upgrade.sql" LogicalName="DatabaseUpgrades.Localization.sql" />

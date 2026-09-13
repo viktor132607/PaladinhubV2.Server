@@ -27,13 +27,13 @@ namespace PaladinHubV2.Server.Data.Entities
 		public DateTime CreatedAt { get; set; }
 		public DateTime UpdatedAt { get; set; }
 
-		// новото поле
 		[StringLength(100)]
 		public string? UpdatedBy { get; set; }
 
-		// НЕ [Timestamp]; конфигурира се в DbContext
 		[ConcurrencyCheck]
 		public byte[] RowVersion { get; set; } = Array.Empty<byte>();
+
+        public ICollection<SeoEntry> SeoEntries { get; set; } = new List<SeoEntry>();
 	}
 }
 
