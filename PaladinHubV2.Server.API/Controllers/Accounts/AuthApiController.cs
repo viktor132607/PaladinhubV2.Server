@@ -20,12 +20,13 @@ public sealed class AuthApiController : ControllerBase
 	public AuthApiController(
 		IAntiforgery antiforgery,
 		SignInManager<User> signInManager,
-		UserManager<User> userManager)
+		UserManager<User> userManager,
+		AuthSessionService sessionService)
 	{
 		_antiforgery = antiforgery;
 		_signInManager = signInManager;
 		_userManager = userManager;
-		_sessionService = new AuthSessionService(userManager);
+		_sessionService = sessionService;
 	}
 
 	[AllowAnonymous]
