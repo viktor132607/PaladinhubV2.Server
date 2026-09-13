@@ -18,10 +18,10 @@ public sealed class PromoCodesControllerTests
         db.PromoCodes.AddRange(
             new PromoCode { Id = "old", Code = "OLD", Type = PromoCodeType.Balance, Value = 5m, CreatedAtUtc = new DateTime(2026, 1, 1) },
             new PromoCode { Id = "new", Code = "NEW", Type = PromoCodeType.Balance, Value = 10m, CreatedAtUtc = new DateTime(2026, 2, 1) });
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
         var controller = CreateController(db, out _);
 
-        IActionResult result = await controller.Index(CancellationToken.None);
+        IActionResult result = await controller.Index(TestContext.Current.CancellationToken);
 
         var ok = Assert.IsType<OkObjectResult>(result);
         var rows = Assert.IsType<List<PromoCode>>(ok.Value);
@@ -50,7 +50,7 @@ public sealed class PromoCodesControllerTests
         using AppDbContext db = CreateContext();
         var controller = CreateController(db, out var service);
 
-        IActionResult result = await controller.CreateApi(null, CancellationToken.None);
+        IActionResult result = await controller.CreateApi(null, TestContext.Current.CancellationToken);
 
         var badRequest = Assert.IsType<BadRequestObjectResult>(result);
         Assert.Equal("Promo code data is required.", ControllerTestSupport.ReadString(badRequest.Value, "message"));
@@ -64,11 +64,11 @@ public sealed class PromoCodesControllerTests
         var controller = CreateController(db, out var service);
         var model = new PromoCode { Code = " ", Type = PromoCodeType.Balance, Value = 0m };
 
-        IActionResult result = await controller.CreateApi(model, CancellationToken.None);
+        IActionResult result = await controller.CreateApi(model, TestContext.Current.CancellationToken);
 
         var problem = Assert.IsType<ObjectResult>(result);
-        Assert.Equal(400, problem.StatusCode);
         var details = Assert.IsType<ValidationProblemDetails>(problem.Value);
+        Assert.Equal(400, details.Status);
         Assert.Contains(nameof(PromoCode.Code), details.Errors.Keys);
         Assert.Contains(nameof(PromoCode.Value), details.Errors.Keys);
         service.Verify(x => x.CreateAsync(It.IsAny<PromoCode>()), Times.Never);
@@ -79,12 +79,12 @@ public sealed class PromoCodesControllerTests
     {
         using AppDbContext db = CreateContext();
         db.PromoCodes.Add(new PromoCode { Id = "existing", Code = "SAVE10", Type = PromoCodeType.Balance, Value = 10m });
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
         var controller = CreateController(db, out var service);
 
         IActionResult result = await controller.CreateApi(
             new PromoCode { Code = " save10 ", Type = PromoCodeType.Balance, Value = 10m, Currency = "eur" },
-            CancellationToken.None);
+            TestContext.Current.CancellationToken);
 
         var conflict = Assert.IsType<ConflictObjectResult>(result);
         Assert.Equal("Promo code already exists.", ControllerTestSupport.ReadString(conflict.Value, "message"));
@@ -108,7 +108,7 @@ public sealed class PromoCodesControllerTests
                 Currency = " eur ",
                 Notes = " launch "
             },
-            CancellationToken.None);
+            TestContext.Current.CancellationToken);
 
         var created = Assert.IsType<CreatedAtActionResult>(result);
         Assert.Equal(nameof(PromoCodesController.Index), created.ActionName);
