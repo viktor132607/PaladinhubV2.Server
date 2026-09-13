@@ -37,11 +37,31 @@ CREATE TABLE IF NOT EXISTS "RoleSecurityRevisions" (
         FOREIGN KEY ("RoleId") REFERENCES "RoleSecurityProfiles" ("RoleId") ON DELETE RESTRICT
 );
 
+CREATE TABLE IF NOT EXISTS "AccessControlAuditEntries" (
+    "Id" uuid PRIMARY KEY,
+    "Action" character varying(40) NOT NULL,
+    "ActorId" character varying(450) NOT NULL,
+    "Actor" character varying(256) NOT NULL,
+    "TargetRoleId" character varying(450) NULL,
+    "TargetRoleName" character varying(256) NULL,
+    "TargetUserId" character varying(450) NULL,
+    "TargetUserName" character varying(256) NULL,
+    "OldState" text NOT NULL DEFAULT '{}',
+    "NewState" text NOT NULL DEFAULT '{}',
+    "CreatedAtUtc" timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS "IX_RolePermissions_PermissionId"
     ON "RolePermissions" ("PermissionId");
 
 CREATE UNIQUE INDEX IF NOT EXISTS "IX_RoleSecurityRevisions_RoleId_Version"
     ON "RoleSecurityRevisions" ("RoleId", "Version");
+
+CREATE INDEX IF NOT EXISTS "IX_AccessControlAuditEntries_TargetRoleId_CreatedAtUtc"
+    ON "AccessControlAuditEntries" ("TargetRoleId", "CreatedAtUtc");
+
+CREATE INDEX IF NOT EXISTS "IX_AccessControlAuditEntries_TargetUserId_CreatedAtUtc"
+    ON "AccessControlAuditEntries" ("TargetUserId", "CreatedAtUtc");
 
 -- Create security profiles for every role that already exists. This preserves
 -- all existing ASP.NET Identity role membership rows exactly as they are.
