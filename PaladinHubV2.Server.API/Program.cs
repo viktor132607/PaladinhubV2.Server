@@ -385,6 +385,10 @@ static async Task InitializeDatabaseAsync(
 		await seeder.SeedAsync();
 	}
 
+	// Identity roles are created by UsersSeeder, so access-control tables and
+	// role profiles are upgraded only after all seeders have finished.
+	await ExecuteUpgradeAsync(database, "DatabaseUpgrades.RolesPermissions.sql");
+
 	logger.LogInformation(
 		"Application database initialization completed.");
 }
