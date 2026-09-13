@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Routing;
 using PaladinHubV2.Server.API.Controllers.Admin;
 using PaladinHubV2.Server.API.Security;
 using PaladinHubV2.Server.Core.Security;
