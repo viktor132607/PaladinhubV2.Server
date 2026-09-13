@@ -29,7 +29,6 @@ public sealed class ContentTemplatesControllerTests
 
         var result = Assert.IsType<OkObjectResult>(await controller.List("block", TestContext.Current.CancellationToken));
         var rows = Assert.IsType<List<ContentTemplate>>(result.Value);
-
         Assert.Equal(new[] { "Alpha", "Zulu" }, rows.Select(row => row.Name));
     }
 
@@ -47,7 +46,6 @@ public sealed class ContentTemplatesControllerTests
 
         var result = Assert.IsType<OkObjectResult>(await controller.History(template.Id, TestContext.Current.CancellationToken));
         var rows = Assert.IsType<List<ContentTemplateRevision>>(result.Value);
-
         Assert.Equal(new[] { 4, 1 }, rows.Select(row => row.Version));
     }
 
@@ -58,9 +56,7 @@ public sealed class ContentTemplatesControllerTests
         var controller = CreateController(db);
 
         ObjectResult result = Assert.IsType<ObjectResult>(await controller.Create(
-            "unknown",
-            Request("Template"),
-            TestContext.Current.CancellationToken));
+            Request("Template"), "unknown", TestContext.Current.CancellationToken));
 
         Assert.Equal(400, result.StatusCode);
         Assert.Equal("Unknown template kind.", ControllerTestSupport.ReadString(result.Value, "message"));
@@ -76,9 +72,7 @@ public sealed class ContentTemplatesControllerTests
         var controller = CreateController(db, validator);
 
         ObjectResult result = Assert.IsType<ObjectResult>(await controller.Create(
-            "block",
-            Request("Template"),
-            TestContext.Current.CancellationToken));
+            Request("Template"), "block", TestContext.Current.CancellationToken));
 
         Assert.Equal(400, result.StatusCode);
         Assert.Equal("First error. Second error.", ControllerTestSupport.ReadString(result.Value, "message"));
@@ -91,8 +85,8 @@ public sealed class ContentTemplatesControllerTests
         var controller = CreateController(db);
 
         ObjectResult result = Assert.IsType<ObjectResult>(await controller.Create(
-            "block",
             new TemplateRequest("Template", "", "{not-json", 0),
+            "block",
             TestContext.Current.CancellationToken));
 
         Assert.Equal(400, result.StatusCode);
@@ -106,8 +100,8 @@ public sealed class ContentTemplatesControllerTests
         var controller = CreateController(db);
 
         ObjectResult result = Assert.IsType<ObjectResult>(await controller.Create(
-            "block",
             new TemplateRequest("Template", "", "[]", 0),
+            "block",
             TestContext.Current.CancellationToken));
 
         Assert.Equal(400, result.StatusCode);
@@ -121,9 +115,7 @@ public sealed class ContentTemplatesControllerTests
         var controller = CreateController(db);
 
         ObjectResult result = Assert.IsType<ObjectResult>(await controller.Create(
-            "talent-tree",
-            Request("Talent"),
-            TestContext.Current.CancellationToken));
+            Request("Talent"), "talent-tree", TestContext.Current.CancellationToken));
 
         Assert.Equal(400, result.StatusCode);
         Assert.Equal(
@@ -140,9 +132,7 @@ public sealed class ContentTemplatesControllerTests
         var controller = CreateController(db);
 
         ObjectResult result = Assert.IsType<ObjectResult>(await controller.Create(
-            "block",
-            Request(" existing "),
-            TestContext.Current.CancellationToken));
+            Request(" existing "), "block", TestContext.Current.CancellationToken));
 
         Assert.Equal(409, result.StatusCode);
         Assert.Equal("A template with this name already exists.", ControllerTestSupport.ReadString(result.Value, "message"));
@@ -155,8 +145,8 @@ public sealed class ContentTemplatesControllerTests
         var controller = CreateController(db, actor: "template-admin");
 
         ObjectResult result = Assert.IsType<ObjectResult>(await controller.Create(
-            "block",
             new TemplateRequest("  Guide card  ", "  Description  ", ValidLayout, 0),
+            "block",
             TestContext.Current.CancellationToken));
         var template = Assert.IsType<ContentTemplate>(result.Value);
 
@@ -175,7 +165,7 @@ public sealed class ContentTemplatesControllerTests
         var controller = CreateController(db);
 
         ObjectResult result = Assert.IsType<ObjectResult>(await controller.Update(
-            Guid.NewGuid(), "block", Request("Template"), TestContext.Current.CancellationToken));
+            Guid.NewGuid(), Request("Template"), "block", TestContext.Current.CancellationToken));
 
         Assert.Equal(404, result.StatusCode);
         Assert.Equal("Template not found.", ControllerTestSupport.ReadString(result.Value, "message"));
@@ -191,7 +181,7 @@ public sealed class ContentTemplatesControllerTests
         var controller = CreateController(db);
 
         ObjectResult result = Assert.IsType<ObjectResult>(await controller.Update(
-            template.Id, "block", Request("Template", version: 2), TestContext.Current.CancellationToken));
+            template.Id, Request("Template", version: 2), "block", TestContext.Current.CancellationToken));
 
         Assert.Equal(409, result.StatusCode);
         Assert.Equal("Template changed. Reload the library first.", ControllerTestSupport.ReadString(result.Value, "message"));
@@ -208,7 +198,7 @@ public sealed class ContentTemplatesControllerTests
         var controller = CreateController(db);
 
         ObjectResult result = Assert.IsType<ObjectResult>(await controller.Update(
-            template.Id, "block", Request("Template", template.Version), TestContext.Current.CancellationToken));
+            template.Id, Request("Template", template.Version), "block", TestContext.Current.CancellationToken));
 
         Assert.Equal(409, result.StatusCode);
         Assert.Equal(
@@ -227,8 +217,8 @@ public sealed class ContentTemplatesControllerTests
 
         ObjectResult result = Assert.IsType<ObjectResult>(await controller.Update(
             template.Id,
-            "block",
             new TemplateRequest("  New  ", "  Updated  ", ValidLayout, template.Version),
+            "block",
             TestContext.Current.CancellationToken));
         var updated = Assert.IsType<ContentTemplate>(result.Value);
 
