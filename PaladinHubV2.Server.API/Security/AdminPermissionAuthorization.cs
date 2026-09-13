@@ -63,6 +63,24 @@ public sealed class AdminPermissionEvaluator : IAdminPermissionEvaluator
 
         await using var database = new AccessControlDbContext(options);
 
+        string[] activeSystemRoleNames = await (
+            from membership in database.UserRoles.AsNoTracking()
+            join profile in database.RoleSecurityProfiles.AsNoTracking()
+                on membership.RoleId equals profile.RoleId
+            join role in database.Roles.AsNoTracking()
+                on membership.RoleId equals role.Id
+            where membership.UserId == userId &&
+                  !profile.IsDisabled &&
+                  profile.IsSystem
+            select role.Name ?? string.Empty)
+            .ToArrayAsync(cancellationToken);
+
+        if (activeSystemRoleNames.Any(roleName =>
+                SystemRoleCatalog.Find(roleName)?.RequiredPermissions.Contains(permissionId) == true))
+        {
+            return true;
+        }
+
         return await (
             from membership in database.UserRoles.AsNoTracking()
             join profile in database.RoleSecurityProfiles.AsNoTracking()
