@@ -115,8 +115,12 @@ public sealed class PageHistoryControllerTests
         Assert.True(page.Version > version);
     }
 
-    private static PageHistoryController CreateController(AppDbContext db) =>
-        new(db, new JsonLayoutValidator());
+    private static PageHistoryController CreateController(AppDbContext db)
+    {
+        var controller = new PageHistoryController(db, new JsonLayoutValidator());
+        ControllerTestSupport.Attach(controller, ControllerTestSupport.CreateHttpContext());
+        return controller;
+    }
 
     private static ContentPage Page(
         string section,
