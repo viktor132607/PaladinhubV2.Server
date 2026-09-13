@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using PaladinHubV2.Server.API.Controllers.Content.PageBuilder;
 using PaladinHubV2.Server.Data;
 using PaladinHubV2.Server.Data.Entities;
@@ -17,7 +16,6 @@ public sealed class PageManagementControllerTests
         ContentPage zulu = Page("retribution", "zulu", "Zulu");
         ContentPage beta = Page("holy", "beta", "Beta");
         ContentPage alpha = Page("holy", "alpha", "Alpha");
-        alpha.RowVersion = [1, 2];
         db.ContentPages.AddRange(zulu, beta, alpha);
         await db.SaveChangesAsync(TestContext.Current.CancellationToken);
         var controller = CreateController(db);
@@ -54,7 +52,6 @@ public sealed class PageManagementControllerTests
         page.IsPublished = false;
         page.JsonLayout = "[{\"type\":\"paragraph\"}]";
         page.UpdatedBy = "admin-7";
-        page.RowVersion = [7, 8, 9];
         db.ContentPages.Add(page);
         await db.SaveChangesAsync(TestContext.Current.CancellationToken);
 
@@ -85,13 +82,6 @@ public sealed class PageManagementControllerTests
     private static PageManagementController CreateController(AppDbContext db) =>
         new(new PageManagementService(db));
 
-    private static AppDbContext CreateContext()
-    {
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase($"page-management-read-{Guid.NewGuid():N}")
-            .ConfigureWarnings(warnings => warnings.Ignore(
-                Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning))
-            .Options;
-        return new AppDbContext(options);
-    }
+    private static AppDbContext CreateContext() =>
+        PageBuilderSqliteTestDatabase.CreateContext();
 }
