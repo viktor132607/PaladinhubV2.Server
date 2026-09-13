@@ -1,11 +1,17 @@
 using System.ComponentModel.DataAnnotations;
+using Microsoft.EntityFrameworkCore;
 
 namespace PaladinHubV2.Server.Data.Entities;
 
+[Index(nameof(PageId))]
+[Index(nameof(SocialImageMediaId))]
 public sealed class SeoEntry
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+
     public int? PageId { get; set; }
+
+    [DeleteBehavior(DeleteBehavior.Restrict)]
     public ContentPage? Page { get; set; }
 
     [MaxLength(2048)]
@@ -27,6 +33,8 @@ public sealed class SeoEntry
     public string SocialDescription { get; set; } = string.Empty;
 
     public Guid? SocialImageMediaId { get; set; }
+
+    [DeleteBehavior(DeleteBehavior.Restrict)]
     public SpellIcon? SocialImageMedia { get; set; }
 
     [MaxLength(2048)]
@@ -43,11 +51,15 @@ public sealed class SeoEntry
     public ICollection<SeoRevision> Revisions { get; set; } = new List<SeoRevision>();
 }
 
+[Index(nameof(EntryId), nameof(Version), IsUnique = true)]
 public sealed class SeoRevision
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid EntryId { get; set; }
+
+    [DeleteBehavior(DeleteBehavior.Restrict)]
     public SeoEntry Entry { get; set; } = null!;
+
     public int Version { get; set; }
 
     [MaxLength(30)]
