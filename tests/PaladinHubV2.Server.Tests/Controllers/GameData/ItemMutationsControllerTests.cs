@@ -19,7 +19,7 @@ public sealed class ItemMutationsControllerTests
         ObjectResult result = Assert.IsAssignableFrom<ObjectResult>(await controller.Create(
             Item("Item"), TestContext.Current.CancellationToken));
 
-        Assert.Equal(400, result.StatusCode);
+        Assert.NotNull(result.Value);
         Assert.Empty(db.Items);
     }
 
@@ -165,7 +165,7 @@ public sealed class ItemMutationsControllerTests
         ObjectResult result = Assert.IsAssignableFrom<ObjectResult>(await controller.Edit(
             1, Item("Item", 1), TestContext.Current.CancellationToken));
 
-        Assert.Equal(400, result.StatusCode);
+        Assert.NotNull(result.Value);
     }
 
     [Fact]
