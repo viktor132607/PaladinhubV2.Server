@@ -167,12 +167,27 @@ public static class AdminEndpointRegistry
         E("Navigation", "Restore", "POST", "/Admin/api/navigation/{id}/restore", "navigation", "restore", AdminRole, AdminPermissions.Navigation.Restore),
         E("SpellIcons", "Browse", "GET", "/Admin/api/spells/icons", "spell_icons", "read", AdminRole, AdminPermissions.SpellIcons.Read),
         E("SpellIcons", "Upload", "POST", "/Admin/api/spells/icons", "spell_icons", "create", AdminRole, AdminPermissions.SpellIcons.Create),
+
+        E("Items", "Create", "GET", "/Admin/api/items/create", "items", "read", AdminRole, AdminPermissions.Items.Read),
+        E("Items", "Edit", "GET", "/Admin/api/items/{id}/edit", "items", "read", AdminRole, AdminPermissions.Items.Read),
+        E("Items", "Details", "GET", "/Admin/api/items/{id}", "items", "read", AdminRole, AdminPermissions.Items.Read),
+        E("Items", "Delete", "GET", "/Admin/api/items/{id}/delete", "items", "read", AdminRole, AdminPermissions.Items.Read),
         E("ItemMutations", "Create", "POST", "/Admin/api/items", "items", "create", AdminRole, AdminPermissions.Items.Create),
         E("ItemMutations", "Edit", "PUT", "/Admin/api/items/{id}", "items", "update", AdminRole, AdminPermissions.Items.Update),
         E("ItemMutations", "DeleteConfirmed", "DELETE", "/Admin/api/items/{id}", "items", "delete", AdminRole, AdminPermissions.Items.Delete),
+
+        E("Spells", "Create", "GET", "/Admin/api/spells/create", "spells", "read", AdminRole, AdminPermissions.Spells.Read),
+        E("Spells", "Edit", "GET", "/Admin/api/spells/{id}/edit", "spells", "read", AdminRole, AdminPermissions.Spells.Read),
+        E("Spells", "Details", "GET", "/Admin/api/spells/{id}", "spells", "read", AdminRole, AdminPermissions.Spells.Read),
+        E("Spells", "Delete", "GET", "/Admin/api/spells/{id}/delete", "spells", "read", AdminRole, AdminPermissions.Spells.Read),
         E("SpellMutations", "Create", "POST", "/Admin/api/spells", "spells", "create", AdminRole, AdminPermissions.Spells.Create),
         E("SpellMutations", "Edit", "PUT", "/Admin/api/spells/{id}", "spells", "update", AdminRole, AdminPermissions.Spells.Update),
         E("SpellMutations", "DeleteConfirmed", "DELETE", "/Admin/api/spells/{id}", "spells", "delete", AdminRole, AdminPermissions.Spells.Delete),
+
+        E("CartArchive", "Archive", "GET", "/api/cart/archive | /Cart/archive", "carts", "read", AdminRole, AdminPermissions.Carts.Read,
+            notes: "Admin-only archived cart/order view lives outside /Admin."),
+        E("CartArchive", "Details", "GET", "/api/cart/archive/{id} | /Cart/archive/{id} | /api/cart/Details/{id} | /Cart/Details/{id}", "carts", "read", AdminRole, AdminPermissions.Carts.Read,
+            notes: "Admin-only archived cart/order details live outside /Admin."),
 
         E("ProductCreate", "Create", "GET", "/api/products/Create | /Products/Create", "products", "read", AdminRole, AdminPermissions.Products.Read,
             notes: "Admin-only product endpoint lives outside /Admin and has API/legacy route aliases."),
