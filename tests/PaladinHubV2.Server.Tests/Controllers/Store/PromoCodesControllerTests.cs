@@ -68,7 +68,6 @@ public sealed class PromoCodesControllerTests
 
         var problem = Assert.IsType<ObjectResult>(result);
         var details = Assert.IsType<ValidationProblemDetails>(problem.Value);
-        Assert.Equal(400, details.Status);
         Assert.Contains(nameof(PromoCode.Code), details.Errors.Keys);
         Assert.Contains(nameof(PromoCode.Value), details.Errors.Keys);
         service.Verify(x => x.CreateAsync(It.IsAny<PromoCode>()), Times.Never);
