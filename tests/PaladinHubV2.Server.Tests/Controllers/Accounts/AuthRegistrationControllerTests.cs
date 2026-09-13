@@ -8,6 +8,7 @@ using Moq;
 using PaladinHub.Models.Auth;
 using PaladinHubV2.Server.API.Controllers.Accounts;
 using PaladinHubV2.Server.Data.Entities;
+using PaladinHubV2.Server.Domain.Services.Accounts;
 using Xunit;
 
 namespace PaladinHubV2.Server.Tests.Controllers.Accounts;
@@ -233,7 +234,8 @@ public sealed class AuthRegistrationControllerTests
         var controller = new AuthRegistrationController(
             signIn.Object,
             users.Object,
-            roles.Object)
+            roles.Object,
+            new AuthSessionService(users.Object))
         {
             ControllerContext = new ControllerContext
             {
