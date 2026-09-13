@@ -106,24 +106,33 @@ app.UseStatusCodePages(
 	});
 
 app.UseStaticFiles();
-
 app.UseRouting();
-
 app.UseCors("PaladinHubClient");
-
 app.UseSession();
-
 app.UseAuthentication();
 app.UseAuthorization();
-app.Use(async (context, next) => {
-    if (context.User.Identity?.IsAuthenticated == true && context.Request.Method is "POST" or "PUT" or "PATCH" or "DELETE")
-        context.RequestServices.GetRequiredService<AppDbContext>().AuditActor = context.User.Identity.Name ?? "admin";
-    try { await next(); }
-    catch (PaladinHubV2.Server.Data.Entities.PageInUseException error) {
-        context.Response.StatusCode = 409; await context.Response.WriteAsJsonAsync(new { message = error.Message });
-    }
-});
+app.Use(
+	async (context, next) =>
+	{
+		if (context.User.Identity?.IsAuthenticated == true &&
+			context.Request.Method is "POST" or "PUT" or "PATCH" or "DELETE")
+		{
+			context.RequestServices
+				.GetRequiredService<AppDbContext>()
+				.AuditActor = context.User.Identity.Name ?? "admin";
+		}
 
+		try
+		{
+			await next();
+		}
+		catch (PaladinHubV2.Server.Data.Entities.PageInUseException error)
+		{
+			context.Response.StatusCode = StatusCodes.Status409Conflict;
+			await context.Response.WriteAsJsonAsync(
+				new { message = error.Message });
+		}
+	});
 
 app.MapControllers();
 
@@ -320,58 +329,48 @@ static async Task InitializeDatabaseAsync(
 		.EnsureCreatedAsync();
 
 	// EnsureCreated does not update an existing database. Keep this upgrade idempotent.
-    await database.Database.ExecuteSqlRawAsync("""
-        CREATE TABLE IF NOT EXISTS "SpellIcons" (
-            "Id" uuid PRIMARY KEY,
-            "Name" character varying(255) NOT NULL,
-            "ContentType" character varying(32) NOT NULL,
-            "Content" bytea NOT NULL,
-            "CreatedAtUtc" timestamp with time zone NOT NULL
-        );
-        ALTER TABLE "Spells" ALTER COLUMN "Icon" TYPE character varying(2048);
-        """);
+	await database.Database.ExecuteSqlRawAsync("""
+		CREATE TABLE IF NOT EXISTS "SpellIcons" (
+			"Id" uuid PRIMARY KEY,
+			"Name" character varying(255) NOT NULL,
+			"ContentType" character varying(32) NOT NULL,
+			"Content" bytea NOT NULL,
+			"CreatedAtUtc" timestamp with time zone NOT NULL
+		);
+		ALTER TABLE "Spells" ALTER COLUMN "Icon" TYPE character varying(2048);
+		""");
 
-    await database.Database.ExecuteSqlRawAsync("""
-        DO $$
-        BEGIN
-            IF to_regclass('"RecordTypes"') IS NULL THEN
-                CREATE TABLE "RecordTypes" ("Name" character varying(50) PRIMARY KEY);
-                INSERT INTO "RecordTypes" ("Name") VALUES ('item'), ('spell'), ('talent');
-                UPDATE "Spells" SET "Quality" = COALESCE(NULLIF(lower(trim("Quality")), ''), 'spell');
-                INSERT INTO "RecordTypes" ("Name") SELECT DISTINCT "Quality" FROM "Spells" ON CONFLICT DO NOTHING;
-            END IF;
-            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_Spells_RecordTypes_Quality' AND conrelid = '"Spells"'::regclass AND confupdtype = 'c') THEN
-                ALTER TABLE "Spells" DROP CONSTRAINT IF EXISTS "FK_Spells_RecordTypes_Quality";
-                ALTER TABLE "Spells" ADD CONSTRAINT "FK_Spells_RecordTypes_Quality"
-                    FOREIGN KEY ("Quality") REFERENCES "RecordTypes" ("Name") ON UPDATE CASCADE ON DELETE RESTRICT;
-            END IF;
-        END $$;
-        """);
+	await database.Database.ExecuteSqlRawAsync("""
+		DO $$
+		BEGIN
+			IF to_regclass('"RecordTypes"') IS NULL THEN
+				CREATE TABLE "RecordTypes" ("Name" character varying(50) PRIMARY KEY);
+				INSERT INTO "RecordTypes" ("Name") VALUES ('item'), ('spell'), ('talent');
+				UPDATE "Spells" SET "Quality" = COALESCE(NULLIF(lower(trim("Quality")), ''), 'spell');
+				INSERT INTO "RecordTypes" ("Name") SELECT DISTINCT "Quality" FROM "Spells" ON CONFLICT DO NOTHING;
+			END IF;
+			IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_Spells_RecordTypes_Quality' AND conrelid = '"Spells"'::regclass AND confupdtype = 'c') THEN
+				ALTER TABLE "Spells" DROP CONSTRAINT IF EXISTS "FK_Spells_RecordTypes_Quality";
+				ALTER TABLE "Spells" ADD CONSTRAINT "FK_Spells_RecordTypes_Quality"
+					FOREIGN KEY ("Quality") REFERENCES "RecordTypes" ("Name") ON UPDATE CASCADE ON DELETE RESTRICT;
+			END IF;
+		END $$;
+		""");
 
-    using (var sql = new StreamReader(typeof(Program).Assembly.GetManifestResourceStream("DatabaseUpgrades.Categories.sql")!))
-        await database.Database.ExecuteSqlRawAsync(await sql.ReadToEndAsync());
-    using (var sql = new StreamReader(typeof(Program).Assembly.GetManifestResourceStream("DatabaseUpgrades.Classes.sql")!))
-        await database.Database.ExecuteSqlRawAsync(await sql.ReadToEndAsync());
-    using (var sql = new StreamReader(typeof(Program).Assembly.GetManifestResourceStream("DatabaseUpgrades.Tags.sql")!))
-        await database.Database.ExecuteSqlRawAsync(await sql.ReadToEndAsync());
-    using (var sql = new StreamReader(typeof(Program).Assembly.GetManifestResourceStream("DatabaseUpgrades.Patches.sql")!))
-        await database.Database.ExecuteSqlRawAsync(await sql.ReadToEndAsync());
-    using (var sql = new StreamReader(typeof(Program).Assembly.GetManifestResourceStream("DatabaseUpgrades.Rarities.sql")!))
-        await database.Database.ExecuteSqlRawAsync(await sql.ReadToEndAsync());
-    using (var sql = new StreamReader(typeof(Program).Assembly.GetManifestResourceStream("DatabaseUpgrades.Media.sql")!))
-        await database.Database.ExecuteSqlRawAsync(await sql.ReadToEndAsync());
-    using (var sql = new StreamReader(typeof(Program).Assembly.GetManifestResourceStream("DatabaseUpgrades.Navigation.sql")!))
-        await database.Database.ExecuteSqlRawAsync(await sql.ReadToEndAsync());
-    using (var sql = new StreamReader(typeof(Program).Assembly.GetManifestResourceStream("DatabaseUpgrades.Pages.sql")!))
-        await database.Database.ExecuteSqlRawAsync(await sql.ReadToEndAsync());
-    using (var sql = new StreamReader(typeof(Program).Assembly.GetManifestResourceStream("DatabaseUpgrades.Templates.sql")!))
-        await database.Database.ExecuteSqlRawAsync(await sql.ReadToEndAsync());
-    using (var sql = new StreamReader(typeof(Program).Assembly.GetManifestResourceStream("DatabaseUpgrades.Localization.sql")!))
-        await database.Database.ExecuteSqlRawAsync(await sql.ReadToEndAsync());
-    using (var sql = new StreamReader(typeof(Program).Assembly.GetManifestResourceStream("DatabaseUpgrades.Banners.sql")!))
-        await database.Database.ExecuteSqlRawAsync(await sql.ReadToEndAsync());
-    using (var sql = new StreamReader(typeof(Program).Assembly.GetManifestResourceStream("DatabaseUpgrades.Footer.sql")!))
-        await database.Database.ExecuteSqlRawAsync(await sql.ReadToEndAsync());
+	await ExecuteUpgradeAsync(database, "DatabaseUpgrades.Categories.sql");
+	await ExecuteUpgradeAsync(database, "DatabaseUpgrades.Classes.sql");
+	await ExecuteUpgradeAsync(database, "DatabaseUpgrades.Tags.sql");
+	await ExecuteUpgradeAsync(database, "DatabaseUpgrades.Patches.sql");
+	await ExecuteUpgradeAsync(database, "DatabaseUpgrades.Rarities.sql");
+	await ExecuteUpgradeAsync(database, "DatabaseUpgrades.Media.sql");
+	await ExecuteUpgradeAsync(database, "DatabaseUpgrades.Navigation.sql");
+	await ExecuteUpgradeAsync(database, "DatabaseUpgrades.Pages.sql");
+	await ExecuteUpgradeAsync(database, "DatabaseUpgrades.Seo.sql");
+	await ExecuteUpgradeAsync(database, "DatabaseUpgrades.Templates.sql");
+	await ExecuteUpgradeAsync(database, "DatabaseUpgrades.Localization.sql");
+	await ExecuteUpgradeAsync(database, "DatabaseUpgrades.Banners.sql");
+	await ExecuteUpgradeAsync(database, "DatabaseUpgrades.Footer.sql");
+
 	IEnumerable<ISeeder> seeders =
 		scope.ServiceProvider
 			.GetServices<ISeeder>()
@@ -388,6 +387,28 @@ static async Task InitializeDatabaseAsync(
 
 	logger.LogInformation(
 		"Application database initialization completed.");
+}
+
+static async Task ExecuteUpgradeAsync(
+	AppDbContext database,
+	string resourceName)
+{
+	Stream? stream =
+		typeof(Program).Assembly
+			.GetManifestResourceStream(resourceName);
+
+	if (stream is null)
+	{
+		throw new InvalidOperationException(
+			$"Embedded database upgrade '{resourceName}' was not found.");
+	}
+
+	await using (stream)
+	using (var reader = new StreamReader(stream))
+	{
+		string sql = await reader.ReadToEndAsync();
+		await database.Database.ExecuteSqlRawAsync(sql);
+	}
 }
 
 static int GetSeederOrder(
