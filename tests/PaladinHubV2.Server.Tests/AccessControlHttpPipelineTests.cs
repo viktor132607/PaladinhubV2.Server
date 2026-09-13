@@ -129,6 +129,70 @@ public sealed class AccessControlHttpPipelineTests
         }
     }
 
+    [Fact]
+    public async Task AuthenticatedAdminMutationsRejectMissingAndInvalidCsrfTokens()
+    {
+        string? rootConnectionString = Environment.GetEnvironmentVariable("SEO_POSTGRES_CONNECTION");
+        if (string.IsNullOrWhiteSpace(rootConnectionString))
+        {
+            return;
+        }
+
+        string databaseName = "access_csrf_" + Guid.NewGuid().ToString("N");
+        string testConnectionString = await CreateDatabaseAsync(rootConnectionString, databaseName);
+
+        try
+        {
+            using var factory = new HttpPipelineFactory(
+                testConnectionString,
+                new MutableTimeProvider(DateTimeOffset.UtcNow));
+            TestActors actors = await InitializeAccessControlAsync(factory.Services, testConnectionString);
+            using HttpClient administrator = CreateClient(factory);
+            await LoginAsync(administrator, actors.AdminEmail);
+
+            using var missingTokenRequest = new HttpRequestMessage(
+                HttpMethod.Post,
+                "/Admin/api/access-control/roles")
+            {
+                Content = JsonContent.Create(new
+                {
+                    name = "No CSRF Role",
+                    permissions = Array.Empty<string>()
+                })
+            };
+            using HttpResponseMessage missingTokenResponse =
+                await administrator.SendAsync(missingTokenRequest, Ct);
+            Assert.Equal(HttpStatusCode.BadRequest, missingTokenResponse.StatusCode);
+
+            using var invalidTokenRequest = new HttpRequestMessage(
+                HttpMethod.Post,
+                "/Admin/api/access-control/roles")
+            {
+                Content = JsonContent.Create(new
+                {
+                    name = "Invalid CSRF Role",
+                    permissions = Array.Empty<string>()
+                })
+            };
+            invalidTokenRequest.Headers.Add("X-CSRF-TOKEN", "invalid-antiforgery-token");
+            using HttpResponseMessage invalidTokenResponse =
+                await administrator.SendAsync(invalidTokenRequest, Ct);
+            Assert.Equal(HttpStatusCode.BadRequest, invalidTokenResponse.StatusCode);
+
+            using HttpResponseMessage rolesResponse =
+                await administrator.GetAsync("/Admin/api/access-control/roles", Ct);
+            Assert.Equal(HttpStatusCode.OK, rolesResponse.StatusCode);
+            string rolesJson = await rolesResponse.Content.ReadAsStringAsync(Ct);
+            Assert.DoesNotContain("No CSRF Role", rolesJson, StringComparison.Ordinal);
+            Assert.DoesNotContain("Invalid CSRF Role", rolesJson, StringComparison.Ordinal);
+        }
+        finally
+        {
+            NpgsqlConnection.ClearAllPools();
+            await DropDatabaseAsync(rootConnectionString, databaseName);
+        }
+    }
+
     private static async Task<TestActors> InitializeAccessControlAsync(
         IServiceProvider services,
         string connectionString)
