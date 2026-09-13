@@ -16,33 +16,52 @@ CREATE TABLE IF NOT EXISTS "SeoEntries" (
     "Version" integer NOT NULL DEFAULT 1
 );
 
-ALTER TABLE "SeoEntries" ADD COLUMN IF NOT EXISTS "SocialImageMediaId" uuid NULL;
+ALTER TABLE "SeoEntries"
+    ADD COLUMN IF NOT EXISTS "SocialImageMediaId" uuid NULL;
 
 DO $$
 BEGIN
     IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conname = 'FK_SeoEntries_ContentPages_PageId'
-          AND conrelid = '"SeoEntries"'::regclass
+        SELECT 1
+        FROM pg_constraint constraint_row
+        JOIN pg_attribute column_row
+          ON column_row.attrelid = constraint_row.conrelid
+         AND column_row.attnum = ANY(constraint_row.conkey)
+        WHERE constraint_row.contype = 'f'
+          AND constraint_row.conrelid = '"SeoEntries"'::regclass
+          AND constraint_row.confrelid = '"ContentPages"'::regclass
+          AND column_row.attname = 'PageId'
     ) THEN
         ALTER TABLE "SeoEntries"
             ADD CONSTRAINT "FK_SeoEntries_ContentPages_PageId"
-            FOREIGN KEY ("PageId") REFERENCES "ContentPages"("Id") ON DELETE RESTRICT;
+            FOREIGN KEY ("PageId")
+            REFERENCES "ContentPages"("Id")
+            ON DELETE RESTRICT;
     END IF;
 
     IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conname = 'FK_SeoEntries_SpellIcons_SocialImageMediaId'
-          AND conrelid = '"SeoEntries"'::regclass
+        SELECT 1
+        FROM pg_constraint constraint_row
+        JOIN pg_attribute column_row
+          ON column_row.attrelid = constraint_row.conrelid
+         AND column_row.attnum = ANY(constraint_row.conkey)
+        WHERE constraint_row.contype = 'f'
+          AND constraint_row.conrelid = '"SeoEntries"'::regclass
+          AND constraint_row.confrelid = '"SpellIcons"'::regclass
+          AND column_row.attname = 'SocialImageMediaId'
     ) THEN
         ALTER TABLE "SeoEntries"
             ADD CONSTRAINT "FK_SeoEntries_SpellIcons_SocialImageMediaId"
-            FOREIGN KEY ("SocialImageMediaId") REFERENCES "SpellIcons"("Id") ON DELETE RESTRICT;
+            FOREIGN KEY ("SocialImageMediaId")
+            REFERENCES "SpellIcons"("Id")
+            ON DELETE RESTRICT;
     END IF;
 END $$;
 
-CREATE INDEX IF NOT EXISTS "IX_SeoEntries_PageId" ON "SeoEntries"("PageId");
-CREATE INDEX IF NOT EXISTS "IX_SeoEntries_SocialImageMediaId" ON "SeoEntries"("SocialImageMediaId");
+CREATE INDEX IF NOT EXISTS "IX_SeoEntries_PageId"
+    ON "SeoEntries"("PageId");
+CREATE INDEX IF NOT EXISTS "IX_SeoEntries_SocialImageMediaId"
+    ON "SeoEntries"("SocialImageMediaId");
 CREATE UNIQUE INDEX IF NOT EXISTS "UX_SeoEntries_Active_PageId"
     ON "SeoEntries"("PageId")
     WHERE "PageId" IS NOT NULL AND NOT "IsDeleted";
@@ -63,13 +82,21 @@ CREATE TABLE IF NOT EXISTS "SeoRevisions" (
 DO $$
 BEGIN
     IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conname = 'FK_SeoRevisions_SeoEntries_EntryId'
-          AND conrelid = '"SeoRevisions"'::regclass
+        SELECT 1
+        FROM pg_constraint constraint_row
+        JOIN pg_attribute column_row
+          ON column_row.attrelid = constraint_row.conrelid
+         AND column_row.attnum = ANY(constraint_row.conkey)
+        WHERE constraint_row.contype = 'f'
+          AND constraint_row.conrelid = '"SeoRevisions"'::regclass
+          AND constraint_row.confrelid = '"SeoEntries"'::regclass
+          AND column_row.attname = 'EntryId'
     ) THEN
         ALTER TABLE "SeoRevisions"
             ADD CONSTRAINT "FK_SeoRevisions_SeoEntries_EntryId"
-            FOREIGN KEY ("EntryId") REFERENCES "SeoEntries"("Id") ON DELETE RESTRICT;
+            FOREIGN KEY ("EntryId")
+            REFERENCES "SeoEntries"("Id")
+            ON DELETE RESTRICT;
     END IF;
 END $$;
 
@@ -90,13 +117,16 @@ BEGIN
            WHERE NOT seo."IsDeleted"
              AND seo."SocialImageMediaId" = NEW."Id"
        ) THEN
-        RAISE EXCEPTION 'Media is referenced by SEO settings.' USING ERRCODE = '23503';
+        RAISE EXCEPTION 'Media is referenced by SEO settings.'
+            USING ERRCODE = '23503';
     END IF;
+
     RETURN NEW;
 END;
 $$;
 
-DROP TRIGGER IF EXISTS "TR_SpellIcons_PreventSeoMediaDeactivation" ON "SpellIcons";
+DROP TRIGGER IF EXISTS "TR_SpellIcons_PreventSeoMediaDeactivation"
+    ON "SpellIcons";
 CREATE TRIGGER "TR_SpellIcons_PreventSeoMediaDeactivation"
 BEFORE UPDATE OF "IsDeleted", "IsArchived" ON "SpellIcons"
 FOR EACH ROW
