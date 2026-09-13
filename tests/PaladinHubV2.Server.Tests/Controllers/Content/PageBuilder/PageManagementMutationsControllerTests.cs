@@ -23,40 +23,28 @@ public sealed class PageManagementMutationsControllerTests
     }
 
     [Fact]
-    public async Task Create_InvalidSection_ReturnsBadRequest()
-    {
+    public async Task Create_InvalidSection_ReturnsBadRequest() =>
         await AssertCreateValidationAsync(Request(section: "shadow"), "Section must be Holy, Protection, or Retribution.");
-    }
 
     [Fact]
-    public async Task Create_BlankTitle_ReturnsBadRequest()
-    {
+    public async Task Create_BlankTitle_ReturnsBadRequest() =>
         await AssertCreateValidationAsync(Request(title: "   "), "Page title is required.");
-    }
 
     [Fact]
-    public async Task Create_TitleTooLong_ReturnsBadRequest()
-    {
+    public async Task Create_TitleTooLong_ReturnsBadRequest() =>
         await AssertCreateValidationAsync(Request(title: new string('x', 201)), "Page title cannot exceed 200 characters.");
-    }
 
     [Fact]
-    public async Task Create_BlankSlug_ReturnsBadRequest()
-    {
+    public async Task Create_BlankSlug_ReturnsBadRequest() =>
         await AssertCreateValidationAsync(Request(slug: "   "), "Slug is required.");
-    }
 
     [Fact]
-    public async Task Create_SlugWithoutLettersOrNumbers_ReturnsBadRequest()
-    {
+    public async Task Create_SlugWithoutLettersOrNumbers_ReturnsBadRequest() =>
         await AssertCreateValidationAsync(Request(slug: "--- !!! ---"), "Slug must contain letters or numbers.");
-    }
 
     [Fact]
-    public async Task Create_SlugTooLong_ReturnsBadRequest()
-    {
+    public async Task Create_SlugTooLong_ReturnsBadRequest() =>
         await AssertCreateValidationAsync(Request(slug: new string('a', 101)), "Slug cannot exceed 100 characters.");
-    }
 
     [Fact]
     public async Task Create_ReservedBuiltInRoute_ReturnsConflict()
@@ -64,9 +52,7 @@ public sealed class PageManagementMutationsControllerTests
         await using AppDbContext db = CreateContext();
         var result = Assert.IsType<ConflictObjectResult>(await CreateController(db).Create(
             Request(section: "Holy", slug: "overview"), TestContext.Current.CancellationToken));
-
-        Assert.Equal(
-            "This route belongs to a hardcoded page and cannot be replaced from Page Builder.",
+        Assert.Equal("This route belongs to a hardcoded page and cannot be replaced from Page Builder.",
             ControllerTestSupport.ReadString(result.Value, "message"));
     }
 
@@ -134,12 +120,10 @@ public sealed class PageManagementMutationsControllerTests
         await db.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         var result = Assert.IsType<ConflictObjectResult>(await CreateController(db).Update(
-            page.Id,
-            Request(section: "Holy", slug: "gear", rowVersion: page.RowVersion),
+            page.Id, Request(section: "Holy", slug: "gear", rowVersion: page.RowVersion),
             TestContext.Current.CancellationToken));
 
-        Assert.Equal(
-            "This route belongs to a hardcoded page and cannot be replaced from Page Builder.",
+        Assert.Equal("This route belongs to a hardcoded page and cannot be replaced from Page Builder.",
             ControllerTestSupport.ReadString(result.Value, "message"));
     }
 
@@ -153,8 +137,7 @@ public sealed class PageManagementMutationsControllerTests
         await db.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         var result = Assert.IsType<ConflictObjectResult>(await CreateController(db).Update(
-            page.Id,
-            Request(section: "Holy", slug: "taken", rowVersion: page.RowVersion),
+            page.Id, Request(section: "Holy", slug: "taken", rowVersion: page.RowVersion),
             TestContext.Current.CancellationToken));
 
         Assert.Equal("Slug is already used in this section.", ControllerTestSupport.ReadString(result.Value, "message"));
@@ -167,21 +150,19 @@ public sealed class PageManagementMutationsControllerTests
         ContentPage page = Page("holy", "custom", "Custom", rowVersion: [1, 2]);
         db.ContentPages.Add(page);
         await db.SaveChangesAsync(TestContext.Current.CancellationToken);
-
-        SavePageRequest request = Request();
-        request = new SavePageRequest
+        var request = new SavePageRequest
         {
-            Section = request.Section,
-            Title = request.Title,
-            Slug = request.Slug,
-            IsPublished = request.IsPublished,
+            Section = "Holy",
+            Title = "Custom page",
+            Slug = "custom",
+            IsPublished = true,
             RowVersionBase64 = "%%%"
         };
+
         var result = Assert.IsType<ConflictObjectResult>(await CreateController(db).Update(
             page.Id, request, TestContext.Current.CancellationToken));
 
-        Assert.Equal(
-            "The page changed while you were editing it. Reload and try again.",
+        Assert.Equal("The page changed while you were editing it. Reload and try again.",
             ControllerTestSupport.ReadString(result.Value, "message"));
     }
 
@@ -196,8 +177,7 @@ public sealed class PageManagementMutationsControllerTests
         var result = Assert.IsType<ConflictObjectResult>(await CreateController(db).Update(
             page.Id, Request(rowVersion: [9, 9]), TestContext.Current.CancellationToken));
 
-        Assert.Equal(
-            "The page changed while you were editing it. Reload and try again.",
+        Assert.Equal("The page changed while you were editing it. Reload and try again.",
             ControllerTestSupport.ReadString(result.Value, "message"));
     }
 
@@ -294,8 +274,7 @@ public sealed class PageManagementMutationsControllerTests
         var context = new DefaultHttpContext
         {
             User = new ClaimsPrincipal(new ClaimsIdentity(
-                new[] { new Claim(ClaimTypes.Name, actor) },
-                "Test"))
+                new[] { new Claim(ClaimTypes.Name, actor) }, "Test"))
         };
         ControllerTestSupport.Attach(controller, context);
         return controller;
@@ -305,6 +284,8 @@ public sealed class PageManagementMutationsControllerTests
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase($"page-management-mutations-{Guid.NewGuid():N}")
+            .ConfigureWarnings(warnings => warnings.Ignore(
+                Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning))
             .Options;
         return new AppDbContext(options);
     }

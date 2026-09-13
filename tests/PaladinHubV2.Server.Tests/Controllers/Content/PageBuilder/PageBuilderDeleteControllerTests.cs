@@ -113,6 +113,8 @@ public sealed class PageBuilderDeleteControllerTests
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase($"page-builder-delete-{Guid.NewGuid():N}")
+            .ConfigureWarnings(warnings => warnings.Ignore(
+                Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning))
             .Options;
         return new AppDbContext(options);
     }
