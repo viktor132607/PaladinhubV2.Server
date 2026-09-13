@@ -1,3 +1,5 @@
+using System.Reflection;
+
 namespace PaladinHubV2.Server.Core.Security;
 
 public sealed record PermissionDefinition(
@@ -260,6 +262,12 @@ public static class AdminPermissions
         public const string Manage = "items.manage";
     }
 
+    public static class Carts
+    {
+        public const string Read = "carts.read";
+        public const string Manage = "carts.manage";
+    }
+
     public static class Products
     {
         public const string Read = "products.read";
@@ -285,159 +293,7 @@ public static class AdminPermissions
         public const string Manage = "promo_codes.manage";
     }
 
-    private static readonly PermissionDefinition[] Definitions =
-    [
-        D(Users.Read, "users", Operations.Read, "View user administration data."),
-        D(Users.Create, "users", Operations.Create, "Create users."),
-        D(Users.Update, "users", Operations.Update, "Update users."),
-        D(Users.Delete, "users", Operations.Delete, "Delete or disable users."),
-        D(Users.Manage, "users", Operations.Manage, "Manage user security state."),
-        D(Roles.Read, "roles", Operations.Read, "View roles."),
-        D(Roles.Create, "roles", Operations.Create, "Create roles."),
-        D(Roles.Update, "roles", Operations.Update, "Update roles."),
-        D(Roles.Delete, "roles", Operations.Delete, "Delete roles."),
-        D(Roles.Restore, "roles", Operations.Restore, "Restore role revisions."),
-        D(Roles.Manage, "roles", Operations.Manage, "Manage protected role settings."),
-        D(RolePermissions.Read, "role_permissions", Operations.Read, "View role permissions."),
-        D(RolePermissions.Update, "role_permissions", Operations.Update, "Change role permissions."),
-        D(RolePermissions.Manage, "role_permissions", Operations.Manage, "Manage role permission policy."),
-        D(UserRoles.Read, "user_roles", Operations.Read, "View user-role assignments."),
-        D(UserRoles.Update, "user_roles", Operations.Update, "Assign or revoke user roles."),
-        D(UserRoles.Manage, "user_roles", Operations.Manage, "Manage user-role assignments."),
-        D(Pages.Read, "pages", Operations.Read, "View Page Builder pages and history."),
-        D(Pages.Create, "pages", Operations.Create, "Create Page Builder pages."),
-        D(Pages.Update, "pages", Operations.Update, "Edit Page Builder pages and layouts."),
-        D(Pages.Archive, "pages", Operations.Archive, "Archive Page Builder pages."),
-        D(Pages.Delete, "pages", Operations.Delete, "Delete Page Builder pages."),
-        D(Pages.Restore, "pages", Operations.Restore, "Restore Page Builder pages or revisions."),
-        D(Pages.Manage, "pages", Operations.Manage, "Manage Page Builder lifecycle."),
-        D(PageBlocks.Read, "page_blocks", Operations.Read, "Render Page Builder previews."),
-        D(PageBlocks.Manage, "page_blocks", Operations.Manage, "Manage Page Builder block tooling."),
-        D(PageTemplates.Read, "page_templates", Operations.Read, "View content templates."),
-        D(PageTemplates.Create, "page_templates", Operations.Create, "Create content templates."),
-        D(PageTemplates.Update, "page_templates", Operations.Update, "Update content templates."),
-        D(PageTemplates.Archive, "page_templates", Operations.Archive, "Archive content templates."),
-        D(PageTemplates.Delete, "page_templates", Operations.Delete, "Delete content templates."),
-        D(PageTemplates.Restore, "page_templates", Operations.Restore, "Restore content template revisions."),
-        D(PageTemplates.Manage, "page_templates", Operations.Manage, "Manage content template lifecycle."),
-        D(PagePresets.Read, "page_presets", Operations.Read, "View and preview data presets."),
-        D(PagePresets.Create, "page_presets", Operations.Create, "Create data presets."),
-        D(PagePresets.Update, "page_presets", Operations.Update, "Update data presets."),
-        D(PagePresets.Delete, "page_presets", Operations.Delete, "Delete data presets."),
-        D(PagePresets.Manage, "page_presets", Operations.Manage, "Manage data presets."),
-        D(TalentPages.Read, "talent_pages", Operations.Read, "View dynamic talent pages."),
-        D(TalentPages.Create, "talent_pages", Operations.Create, "Create dynamic talent pages."),
-        D(TalentPages.Update, "talent_pages", Operations.Update, "Update dynamic talent pages."),
-        D(TalentPages.Delete, "talent_pages", Operations.Delete, "Delete dynamic talent pages."),
-        D(TalentPages.Manage, "talent_pages", Operations.Manage, "Manage dynamic talent pages."),
-        D(TalentTrees.Read, "talent_trees", Operations.Read, "View talent-tree administration data."),
-        D(TalentTrees.Update, "talent_trees", Operations.Update, "Save talent-tree administration state."),
-        D(TalentTrees.Manage, "talent_trees", Operations.Manage, "Manage talent-tree configuration."),
-        D(Navigation.Read, "navigation", Operations.Read, "View navigation administration data."),
-        D(Navigation.Create, "navigation", Operations.Create, "Create navigation links."),
-        D(Navigation.Update, "navigation", Operations.Update, "Update navigation links."),
-        D(Navigation.Delete, "navigation", Operations.Delete, "Delete navigation links."),
-        D(Navigation.Restore, "navigation", Operations.Restore, "Restore navigation revisions."),
-        D(Navigation.Manage, "navigation", Operations.Manage, "Manage navigation lifecycle."),
-        D(Banners.Read, "banners", Operations.Read, "View banners and history."),
-        D(Banners.Create, "banners", Operations.Create, "Create banners."),
-        D(Banners.Update, "banners", Operations.Update, "Update banners."),
-        D(Banners.Archive, "banners", Operations.Archive, "Archive or unarchive banners."),
-        D(Banners.Delete, "banners", Operations.Delete, "Delete banners."),
-        D(Banners.Restore, "banners", Operations.Restore, "Restore banner revisions."),
-        D(Banners.Manage, "banners", Operations.Manage, "Manage banner lifecycle."),
-        D(Footer.Read, "footer", Operations.Read, "View footer administration data."),
-        D(Footer.Create, "footer", Operations.Create, "Create footer entries."),
-        D(Footer.Update, "footer", Operations.Update, "Update footer entries."),
-        D(Footer.Archive, "footer", Operations.Archive, "Archive or unarchive footer entries."),
-        D(Footer.Delete, "footer", Operations.Delete, "Delete footer entries."),
-        D(Footer.Restore, "footer", Operations.Restore, "Restore footer revisions."),
-        D(Footer.Manage, "footer", Operations.Manage, "Manage footer lifecycle."),
-        D(Seo.Read, "seo", Operations.Read, "View SEO targets, entries and history."),
-        D(Seo.Create, "seo", Operations.Create, "Create SEO entries."),
-        D(Seo.Update, "seo", Operations.Update, "Update SEO entries."),
-        D(Seo.Archive, "seo", Operations.Archive, "Archive or unarchive SEO entries."),
-        D(Seo.Delete, "seo", Operations.Delete, "Delete SEO entries."),
-        D(Seo.Restore, "seo", Operations.Restore, "Restore SEO revisions."),
-        D(Seo.Manage, "seo", Operations.Manage, "Manage SEO lifecycle."),
-        D(Localization.Read, "localization", Operations.Read, "View language administration data."),
-        D(Localization.Create, "localization", Operations.Create, "Create languages."),
-        D(Localization.Update, "localization", Operations.Update, "Update translations."),
-        D(Localization.Archive, "localization", Operations.Archive, "Archive or unarchive languages."),
-        D(Localization.Delete, "localization", Operations.Delete, "Delete languages."),
-        D(Localization.Restore, "localization", Operations.Restore, "Restore language revisions."),
-        D(Localization.Manage, "localization", Operations.Manage, "Manage localization lifecycle."),
-        D(Database.Read, "database", Operations.Read, "Browse administrative game data."),
-        D(Media.Read, "media", Operations.Read, "View media and history."),
-        D(Media.Create, "media", Operations.Create, "Upload media."),
-        D(Media.Update, "media", Operations.Update, "Update media."),
-        D(Media.Archive, "media", Operations.Archive, "Archive or unarchive media."),
-        D(Media.Delete, "media", Operations.Delete, "Delete media."),
-        D(Media.Restore, "media", Operations.Restore, "Restore media revisions."),
-        D(Media.Manage, "media", Operations.Manage, "Manage media lifecycle."),
-        D(Categories.Read, "categories", Operations.Read, "View categories and history."),
-        D(Categories.Create, "categories", Operations.Create, "Create categories."),
-        D(Categories.Update, "categories", Operations.Update, "Update categories."),
-        D(Categories.Delete, "categories", Operations.Delete, "Delete categories."),
-        D(Categories.Restore, "categories", Operations.Restore, "Restore category revisions."),
-        D(Categories.Manage, "categories", Operations.Manage, "Manage categories."),
-        D(Classes.Read, "classes", Operations.Read, "View classes and specializations."),
-        D(Classes.Create, "classes", Operations.Create, "Create classes or specializations."),
-        D(Classes.Update, "classes", Operations.Update, "Update classes or specializations."),
-        D(Classes.Delete, "classes", Operations.Delete, "Delete classes or specializations."),
-        D(Classes.Restore, "classes", Operations.Restore, "Restore class revisions."),
-        D(Classes.Manage, "classes", Operations.Manage, "Manage classes and specializations."),
-        D(Tags.Read, "tags", Operations.Read, "View tags and history."),
-        D(Tags.Create, "tags", Operations.Create, "Create tags."),
-        D(Tags.Update, "tags", Operations.Update, "Update tags."),
-        D(Tags.Delete, "tags", Operations.Delete, "Delete tags."),
-        D(Tags.Restore, "tags", Operations.Restore, "Restore tag revisions."),
-        D(Tags.Manage, "tags", Operations.Manage, "Manage tags."),
-        D(Patches.Read, "patches", Operations.Read, "View patches and history."),
-        D(Patches.Create, "patches", Operations.Create, "Create patches."),
-        D(Patches.Update, "patches", Operations.Update, "Update patches."),
-        D(Patches.Delete, "patches", Operations.Delete, "Delete patches."),
-        D(Patches.Restore, "patches", Operations.Restore, "Restore patch revisions."),
-        D(Patches.Manage, "patches", Operations.Manage, "Manage patches."),
-        D(Rarities.Read, "rarities", Operations.Read, "View rarities and history."),
-        D(Rarities.Create, "rarities", Operations.Create, "Create rarities."),
-        D(Rarities.Update, "rarities", Operations.Update, "Update rarities."),
-        D(Rarities.Delete, "rarities", Operations.Delete, "Delete rarities."),
-        D(Rarities.Restore, "rarities", Operations.Restore, "Restore rarity revisions."),
-        D(Rarities.Manage, "rarities", Operations.Manage, "Manage rarities."),
-        D(RecordTypes.Read, "record_types", Operations.Read, "View record types."),
-        D(RecordTypes.Create, "record_types", Operations.Create, "Create record types."),
-        D(RecordTypes.Update, "record_types", Operations.Update, "Rename record types."),
-        D(RecordTypes.Delete, "record_types", Operations.Delete, "Delete or replace record types."),
-        D(RecordTypes.Manage, "record_types", Operations.Manage, "Manage record types."),
-        D(SpellIcons.Read, "spell_icons", Operations.Read, "Browse spell icons."),
-        D(SpellIcons.Create, "spell_icons", Operations.Create, "Upload spell icons."),
-        D(SpellIcons.Delete, "spell_icons", Operations.Delete, "Delete spell icons."),
-        D(SpellIcons.Manage, "spell_icons", Operations.Manage, "Manage spell icons."),
-        D(Spells.Read, "spells", Operations.Read, "View spell administration data."),
-        D(Spells.Create, "spells", Operations.Create, "Create spells."),
-        D(Spells.Update, "spells", Operations.Update, "Update spells."),
-        D(Spells.Delete, "spells", Operations.Delete, "Delete spells."),
-        D(Spells.Manage, "spells", Operations.Manage, "Manage spells."),
-        D(Items.Read, "items", Operations.Read, "View item administration data."),
-        D(Items.Create, "items", Operations.Create, "Create items."),
-        D(Items.Update, "items", Operations.Update, "Update items."),
-        D(Items.Delete, "items", Operations.Delete, "Delete items."),
-        D(Items.Manage, "items", Operations.Manage, "Manage items."),
-        D(Products.Read, "products", Operations.Read, "View product administration data and unpublished product details."),
-        D(Products.Create, "products", Operations.Create, "Create products."),
-        D(Products.Update, "products", Operations.Update, "Update products."),
-        D(Products.Delete, "products", Operations.Delete, "Delete products."),
-        D(Products.Manage, "products", Operations.Manage, "Manage store products."),
-        D(ProductReviews.Read, "product_reviews", Operations.Read, "View product review administration data."),
-        D(ProductReviews.Delete, "product_reviews", Operations.Delete, "Moderate product reviews."),
-        D(ProductReviews.Manage, "product_reviews", Operations.Manage, "Manage product review moderation."),
-        D(PromoCodes.Read, "promo_codes", Operations.Read, "View promo codes."),
-        D(PromoCodes.Create, "promo_codes", Operations.Create, "Create promo codes."),
-        D(PromoCodes.Update, "promo_codes", Operations.Update, "Deactivate or update promo codes."),
-        D(PromoCodes.Delete, "promo_codes", Operations.Delete, "Delete promo codes."),
-        D(PromoCodes.Manage, "promo_codes", Operations.Manage, "Manage promo codes.")
-    ];
+    private static readonly PermissionDefinition[] Definitions = BuildDefinitions();
 
     public static IReadOnlyList<PermissionDefinition> All => Definitions;
 
@@ -462,12 +318,37 @@ public static class AdminPermissions
             .ToArray();
     }
 
-    private static PermissionDefinition D(
-        string id,
-        string resource,
-        string operation,
-        string description)
+    private static PermissionDefinition[] BuildDefinitions()
     {
-        return new PermissionDefinition(id, resource, operation, description);
+        return typeof(AdminPermissions)
+            .GetNestedTypes(BindingFlags.Public)
+            .Where(type => type != typeof(Operations))
+            .SelectMany(type => type
+                .GetFields(BindingFlags.Public | BindingFlags.Static)
+                .Where(field =>
+                    field.IsLiteral &&
+                    !field.IsInitOnly &&
+                    field.FieldType == typeof(string))
+                .Select(field => (string)field.GetRawConstantValue()!))
+            .Distinct(StringComparer.Ordinal)
+            .Select(permissionId =>
+            {
+                string[] parts = permissionId.Split('.', 2, StringSplitOptions.TrimEntries);
+                if (parts.Length != 2 || parts.Any(string.IsNullOrWhiteSpace))
+                {
+                    throw new InvalidOperationException(
+                        $"Invalid permission constant '{permissionId}'. Expected resource.operation.");
+                }
+
+                string resource = parts[0];
+                string operation = parts[1];
+                return new PermissionDefinition(
+                    permissionId,
+                    resource,
+                    operation,
+                    $"{operation} permission for {resource.Replace('_', ' ')}.");
+            })
+            .OrderBy(definition => definition.Id, StringComparer.Ordinal)
+            .ToArray();
     }
 }
