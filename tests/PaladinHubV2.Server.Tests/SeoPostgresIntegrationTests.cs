@@ -8,7 +8,7 @@ public sealed class SeoPostgresIntegrationTests
     private static readonly CancellationToken Ct = TestContext.Current.CancellationToken;
 
     [Fact]
-    public async Task SeoUpgradeIsIdempotentAndPreventsReferencedMediaDeactivation()
+    public async Task SeoUpgradeUpdatesOldSchemaIdempotentlyAndGuardsMedia()
     {
         string? connectionString = Environment.GetEnvironmentVariable(
             "SEO_POSTGRES_CONNECTION");
@@ -26,6 +26,7 @@ public sealed class SeoPostgresIntegrationTests
             await ExecuteAsync(connection, $"""
                 CREATE SCHEMA "{schema}";
                 SET search_path TO "{schema}";
+
                 CREATE TABLE "ContentPages" (
                     "Id" integer PRIMARY KEY
                 );
@@ -34,6 +35,39 @@ public sealed class SeoPostgresIntegrationTests
                     "IsArchived" boolean NOT NULL DEFAULT false,
                     "IsDeleted" boolean NOT NULL DEFAULT false
                 );
+
+                -- Reproduce the handoff/checkpoint-era SEO schema. The current
+                -- upgrade must evolve it without dropping existing data or
+                -- adding duplicate foreign keys.
+                CREATE TABLE "SeoEntries" (
+                    "Id" uuid PRIMARY KEY,
+                    "PageId" integer NULL REFERENCES "ContentPages"("Id") ON DELETE RESTRICT,
+                    "Path" varchar(2048) NOT NULL,
+                    "Title" varchar(200) NOT NULL,
+                    "Description" varchar(500) NOT NULL,
+                    "CanonicalUrl" varchar(2048) NOT NULL,
+                    "SocialTitle" varchar(200) NOT NULL,
+                    "SocialDescription" varchar(500) NOT NULL,
+                    "ImageUrl" varchar(2048) NOT NULL,
+                    "Index" boolean NULL,
+                    "Follow" boolean NULL,
+                    "IsArchived" boolean NOT NULL DEFAULT false,
+                    "IsDeleted" boolean NOT NULL DEFAULT false,
+                    "Version" integer NOT NULL DEFAULT 1
+                );
+                CREATE INDEX "IX_SeoEntries_PageId" ON "SeoEntries"("PageId");
+
+                CREATE TABLE "SeoRevisions" (
+                    "Id" uuid PRIMARY KEY,
+                    "EntryId" uuid NOT NULL REFERENCES "SeoEntries"("Id") ON DELETE RESTRICT,
+                    "Version" integer NOT NULL,
+                    "Action" text NOT NULL,
+                    "Actor" text NOT NULL,
+                    "Snapshot" text NOT NULL,
+                    "CreatedAtUtc" timestamptz NOT NULL
+                );
+                CREATE UNIQUE INDEX "IX_SeoRevisions_EntryId_Version"
+                    ON "SeoRevisions"("EntryId", "Version");
                 """);
 
             string upgradeSql = await ReadUpgradeSqlAsync();
@@ -56,12 +90,52 @@ public sealed class SeoPostgresIntegrationTests
                 Assert.Equal(5, indexCount);
             }
 
+            await using (var command = new NpgsqlCommand("""
+                SELECT COUNT(*)
+                FROM pg_constraint
+                WHERE contype = 'f'
+                  AND conrelid = '"SeoEntries"'::regclass;
+                """, connection))
+            {
+                long foreignKeys = (long)(await command.ExecuteScalarAsync(Ct))!;
+                Assert.Equal(2, foreignKeys);
+            }
+
+            await using (var command = new NpgsqlCommand("""
+                SELECT COUNT(*)
+                FROM pg_constraint
+                WHERE contype = 'f'
+                  AND conrelid = '"SeoRevisions"'::regclass;
+                """, connection))
+            {
+                long foreignKeys = (long)(await command.ExecuteScalarAsync(Ct))!;
+                Assert.Equal(1, foreignKeys);
+            }
+
             Guid mediaId = Guid.NewGuid();
             Guid seoId = Guid.NewGuid();
             await using (var command = new NpgsqlCommand("""
                 INSERT INTO "SpellIcons" ("Id") VALUES (@mediaId);
-                INSERT INTO "SeoEntries" ("Id", "SocialImageMediaId")
-                VALUES (@seoId, @mediaId);
+                INSERT INTO "SeoEntries" (
+                    "Id",
+                    "Path",
+                    "Title",
+                    "Description",
+                    "CanonicalUrl",
+                    "SocialTitle",
+                    "SocialDescription",
+                    "SocialImageMediaId",
+                    "ImageUrl")
+                VALUES (
+                    @seoId,
+                    '/',
+                    'Title',
+                    'Description',
+                    '',
+                    'Social title',
+                    'Social description',
+                    @mediaId,
+                    '');
                 """, connection))
             {
                 command.Parameters.AddWithValue("mediaId", mediaId);
@@ -145,11 +219,15 @@ public sealed class SeoPostgresIntegrationTests
 
     private static async Task<string> ReadUpgradeSqlAsync()
     {
-        await using Stream? stream = typeof(SeoController).Assembly
-            .GetManifestResourceStream("DatabaseUpgrades.Seo.sql");
-        Assert.NotNull(stream);
-        using var reader = new StreamReader(stream);
-        return await reader.ReadToEndAsync(Ct);
+        Stream stream = typeof(SeoController).Assembly
+            .GetManifestResourceStream("DatabaseUpgrades.Seo.sql")
+            ?? throw new InvalidOperationException("Embedded SEO upgrade was not found.");
+
+        await using (stream)
+        using (var reader = new StreamReader(stream))
+        {
+            return await reader.ReadToEndAsync(Ct);
+        }
     }
 
     private static async Task ExecuteAsync(
