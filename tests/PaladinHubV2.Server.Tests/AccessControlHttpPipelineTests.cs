@@ -279,7 +279,12 @@ public sealed class AccessControlHttpPipelineTests
         using (var reader = new StreamReader(stream))
         {
             string sql = await reader.ReadToEndAsync(Ct);
-            await database.Database.ExecuteSqlRawAsync(sql, Ct);
+            string connectionString = database.Database.GetConnectionString()
+                ?? throw new InvalidOperationException("HTTP test database connection is unavailable.");
+            await using var connection = new NpgsqlConnection(connectionString);
+            await connection.OpenAsync(Ct);
+            await using var command = new NpgsqlCommand(sql, connection);
+            await command.ExecuteNonQueryAsync(Ct);
         }
     }
 
