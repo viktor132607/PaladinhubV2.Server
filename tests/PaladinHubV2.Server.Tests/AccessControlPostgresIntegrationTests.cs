@@ -1,5 +1,5 @@
 using Npgsql;
-using PaladinHubV2.Server.Data;
+using PaladinHubV2.Server.API.Controllers.Content;
 
 namespace PaladinHubV2.Server.Tests;
 
@@ -120,7 +120,7 @@ public sealed class AccessControlPostgresIntegrationTests
 
     private static async Task<string> ReadUpgradeSqlAsync()
     {
-        Stream stream = typeof(AccessControlDbContext).Assembly
+        Stream stream = typeof(SeoController).Assembly
             .GetManifestResourceStream("DatabaseUpgrades.RolesPermissions.sql")
             ?? throw new InvalidOperationException(
                 "Embedded roles/permissions upgrade was not found.");
