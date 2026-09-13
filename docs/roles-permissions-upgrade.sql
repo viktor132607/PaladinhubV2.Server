@@ -91,3 +91,19 @@ FROM "AspNetRoles" role
 WHERE profile."RoleId" = role."Id"
   AND lower(role."Name") = 'admin'
   AND (profile."IsSystem" = false OR profile."IsDisabled" = true);
+
+-- Point 15.6 retired operation IDs that never mapped to a real administrative
+-- capability. Remove stale grants idempotently so old databases cannot keep
+-- no-op permissions that are no longer part of the authoritative catalog.
+DELETE FROM "RolePermissions"
+WHERE "PermissionId" IN (
+    'users.create',
+    'users.update',
+    'users.delete',
+    'talent_pages.delete',
+    'media.create',
+    'media.archive',
+    'spell_icons.delete',
+    'product_reviews.read',
+    'promo_codes.delete'
+);
