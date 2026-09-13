@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using PaladinHubV2.Server.Core.Security;
 using PaladinHubV2.Server.Data.Entities;
 using PaladinHubV2.Server.Data.Seed.Contracts;
 
@@ -17,24 +16,13 @@ namespace PaladinHubV2.Server.Data.Seed
 			using var scope = _sp.CreateScope();
 			var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
 			var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
-			var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-			// Existing production role names are preserved for backwards compatibility.
+			// Създаваме ролите
 			foreach (var role in new[] { "Admin", "User" })
 			{
 				if (!await roleManager.RoleExistsAsync(role))
-				{
-					IdentityResult roleResult = await roleManager.CreateAsync(new IdentityRole(role));
-					if (!roleResult.Succeeded)
-					{
-						throw new InvalidOperationException(
-							$"Role create failed ({role}): " +
-							string.Join("; ", roleResult.Errors.Select(error => error.Description)));
-					}
-				}
+					await roleManager.CreateAsync(new IdentityRole(role));
 			}
-
-			await EnsureAccessControlFoundationAsync(db, roleManager);
 
 			// Четем админските данни от .env
 			var adminName = Environment.GetEnvironmentVariable("ADMIN_NAME") ?? "Default Admin";
@@ -72,15 +60,7 @@ namespace PaladinHubV2.Server.Data.Seed
 			}
 
 			if (!await userManager.IsInRoleAsync(admin, "Admin"))
-			{
-				IdentityResult addAdminRole = await userManager.AddToRoleAsync(admin, "Admin");
-				if (!addAdminRole.Succeeded)
-				{
-					throw new InvalidOperationException(
-						"Admin role assignment failed: " +
-						string.Join("; ", addAdminRole.Errors.Select(error => error.Description)));
-				}
-			}
+				await userManager.AddToRoleAsync(admin, "Admin");
 
 			// Демонстрационни потребители
 			var defaultUserPassword = "Paladin#12345";
@@ -119,58 +99,8 @@ namespace PaladinHubV2.Server.Data.Seed
 				}
 
 				if (!await userManager.IsInRoleAsync(user, "User"))
-				{
-					IdentityResult addUserRole = await userManager.AddToRoleAsync(user, "User");
-					if (!addUserRole.Succeeded)
-					{
-						throw new InvalidOperationException(
-							$"User role assignment failed ({email}): " +
-							string.Join("; ", addUserRole.Errors.Select(error => error.Description)));
-					}
-				}
+					await userManager.AddToRoleAsync(user, "User");
 			}
-		}
-
-		private static async Task EnsureAccessControlFoundationAsync(
-			AppDbContext db,
-			RoleManager<IdentityRole> roleManager)
-		{
-			Stream stream = typeof(UsersSeeder).Assembly
-				.GetManifestResourceStream("DatabaseUpgrades.RolesPermissions.sql")
-				?? throw new InvalidOperationException(
-					"Embedded roles/permissions database upgrade was not found.");
-
-			string sql;
-			await using (stream)
-			using (var reader = new StreamReader(stream))
-			{
-				sql = await reader.ReadToEndAsync();
-			}
-
-			await using var transaction = await db.Database.BeginTransactionAsync();
-			await db.Database.ExecuteSqlRawAsync(sql);
-
-			IdentityRole adminRole = await roleManager.FindByNameAsync(SystemRoleCatalog.Administrator)
-				?? throw new InvalidOperationException("The protected Admin role was not found after role seeding.");
-
-			foreach (string permissionId in AdminPermissions.AllIds.Order(StringComparer.Ordinal))
-			{
-				await db.Database.ExecuteSqlInterpolatedAsync($"""
-					INSERT INTO "RolePermissions" (
-						"RoleId",
-						"PermissionId",
-						"GrantedBy",
-						"GrantedAtUtc")
-					VALUES (
-						{adminRole.Id},
-						{permissionId},
-						{'system-bootstrap'},
-						CURRENT_TIMESTAMP)
-					ON CONFLICT ("RoleId", "PermissionId") DO NOTHING;
-					""");
-			}
-
-			await transaction.CommitAsync();
 		}
 	}
 }
