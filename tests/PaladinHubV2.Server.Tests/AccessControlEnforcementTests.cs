@@ -129,6 +129,46 @@ public sealed class AccessControlEnforcementTests
     }
 
     [Fact]
+    public async Task EveryNonMixedRegistryEntryIsResolvedAndPermissionChecked()
+    {
+        foreach (AdminEndpointDefinition definition in
+                 AdminEndpointRegistry.All.Where(endpoint => !endpoint.MixedAccess))
+        {
+            bool nextCalled = false;
+            var middleware = new AdminPermissionEnforcementMiddleware(_ =>
+            {
+                nextCalled = true;
+                return Task.CompletedTask;
+            });
+            var authorization = new RecordingAuthorizationService(succeed: true);
+            DefaultHttpContext context = Context(
+                definition.Controller,
+                NormalizeAction(definition.Action),
+                definition.HttpMethod,
+                authenticated: true);
+
+            if (definition.Permissions.Count > 1)
+            {
+                string operation = definition.Permissions[0]
+                    .Split('.', StringSplitOptions.RemoveEmptyEntries)
+                    .Last();
+                byte[] payload = Encoding.UTF8.GetBytes($"{{\"action\":\"{operation}\"}}");
+                context.Request.Body = new MemoryStream(payload);
+                context.Request.ContentLength = payload.Length;
+                context.Request.ContentType = "application/json";
+            }
+
+            await middleware.InvokeAsync(context, authorization);
+
+            Assert.True(
+                nextCalled,
+                $"{definition.Controller}.{definition.Action} [{definition.HttpMethod}] was not passed after a successful permission decision.");
+            Assert.Equal(1, authorization.CallCount);
+            Assert.Contains(authorization.LastPermission, definition.Permissions);
+        }
+    }
+
+    [Fact]
     public void PresetAndTalentMutationsUseAutomaticAntiforgeryValidation()
     {
         Assert.NotNull(
@@ -187,6 +227,12 @@ public sealed class AccessControlEnforcementTests
             new EndpointMetadataCollection(descriptor),
             $"{controller}.{action}"));
         return context;
+    }
+
+    private static string NormalizeAction(string action)
+    {
+        int suffix = action.IndexOf('#');
+        return suffix < 0 ? action : action[..suffix];
     }
 
     private sealed class RecordingAuthorizationService(bool succeed)
