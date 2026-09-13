@@ -232,6 +232,12 @@ public static class SeoRouteRegistry
             ? candidate.TrimEnd('/')
             : candidate;
 
+        if (candidate == "/")
+        {
+            normalized = candidate;
+            return true;
+        }
+
         string[] segments = candidate.Split('/', StringSplitOptions.None);
         if (segments.Skip(1).Any(segment =>
                 string.IsNullOrEmpty(segment) ||
