@@ -109,3 +109,43 @@ Scope boundary for 15.1:
 - the admin Client UI and effective-permission route/menu/action gating are later point-15 stages.
 
 15.1 completion means the inventory, permission vocabulary, persistence schema, bootstrap compatibility and automated coverage gate are finished. It does not mean point 15 as a whole is complete.
+
+### 15.2 — role and user management backend
+
+Status: COMPLETE on `work/roles-permissions-15-2`; intentionally unmerged while point 15 remains in staged security implementation.
+
+Implemented:
+- Admin-only, antiforgery-protected `/Admin/api/access-control` management API for role list/detail/create/update/delete, permission replacement, history/restore, user search, role membership assignment/revocation and durable audit browsing;
+- role-name validation with trimming, control-character rejection and case-insensitive uniqueness through Identity `NormalizedName`;
+- server-side validation that refuses unknown permission IDs instead of storing arbitrary strings;
+- custom-role enable/disable state with disabled-role assignment blocked;
+- optimistic role `Version` checks with stale writes rejected as conflicts;
+- protected `Admin` invariants: reserved/protected name, cannot disable, cannot delete and cannot replace the full effective permission set with a reduced set;
+- deletion of roles that still have users is blocked; there is no implicit user reassignment;
+- versioned role snapshots and invariant-checked revision restore;
+- durable `AccessControlAuditEntries` capturing actor, target role/user, action, UTC time and old/new state for role and membership changes;
+- user-role assignment/revocation against the existing `AspNetUserRoles` table, not a parallel membership system;
+- security-stamp rotation on membership assignment/revocation so later session enforcement can invalidate stale authorization state;
+- self-demotion protection for administrators;
+- last-active-administrator protection serialized through a PostgreSQL transaction advisory lock, so concurrent administrator revocations cannot both pass a stale count check;
+- provider-neutral active-admin evaluation for unit tests plus a real PostgreSQL 17 concurrency race test using two parallel service instances;
+- idempotent PostgreSQL upgrade extended with durable audit storage and indexes;
+- access-control management actions added to the endpoint/permission registry, keeping the later enforcement stage mechanically traceable.
+
+Verification evidence:
+- Server CI run 94 completed successfully against PostgreSQL 17 before final documentation/analyzer-only cleanup;
+- Release solution build: 0 errors;
+- catalog model/security checks: passed;
+- full suite at the 15.2 functional gate: 721 total, 721 succeeded, 0 failed, 0 skipped;
+- PostgreSQL migration test executes the access-control upgrade twice, preserves existing Admin membership, verifies system profile/FK/index/audit-table behavior and keeps role deletion restricted while referenced;
+- PostgreSQL concurrent-revocation test starts with two active Admin memberships, issues two concurrent revokes through separate service instances, proves exactly one succeeds/one is rejected, and verifies exactly one Admin membership remains;
+- controller metadata tests verify the management controller retains the current `Admin` authorization boundary plus automatic antiforgery protection and that every new action has a known registry permission mapping.
+
+Scope boundary for 15.2:
+- the management API still uses the legacy `Authorize(Roles = "Admin")` boundary; granular permission policies/handlers are intentionally 15.3;
+- broader admin endpoints are not yet permission-enforced; the security debt inventoried in 15.1 still belongs to 15.3;
+- security-stamp rotation is implemented on membership mutation, but proving active-session revocation through the real HTTP authentication pipeline belongs to 15.4;
+- user disable/delete/lockout administration is not introduced here, so last-admin protection in 15.2 applies to the role-assignment mutation path implemented in this stage;
+- the Roles/Users admin Client UI is 15.5.
+
+15.2 completion means the backend management and transactional safety layer is in place. It does not mean point 15 as a whole is complete.
