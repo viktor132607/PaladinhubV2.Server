@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using PaladinHubV2.Server.API.Controllers.Accounts;
 using PaladinHubV2.Server.Core.Security;
 using PaladinHubV2.Server.Data;
 using PaladinHubV2.Server.Data.Entities;
@@ -111,7 +112,7 @@ public sealed class EffectivePermissionServicePostgresTests
 
     private static async Task ExecuteUpgradeAsync(string connectionString)
     {
-        Stream stream = typeof(EffectivePermissionService).Assembly
+        Stream stream = typeof(AuthApiController).Assembly
             .GetManifestResourceStream("DatabaseUpgrades.RolesPermissions.sql")
             ?? throw new InvalidOperationException("Embedded roles/permissions upgrade was not found.");
         using var reader = new StreamReader(stream);
