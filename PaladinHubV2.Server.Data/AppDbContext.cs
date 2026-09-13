@@ -65,6 +65,8 @@ namespace PaladinHubV2.Server.Data
 
         public string? AuditActor { get; set; }
         public string? PageAuditAction { get; set; }
+        public DbSet<FooterEntry> FooterEntries => Set<FooterEntry>();
+        public DbSet<FooterRevision> FooterRevisions => Set<FooterRevision>();
         public DbSet<SiteLanguage> SiteLanguages => Set<SiteLanguage>();
         public DbSet<LanguageRevision> LanguageRevisions => Set<LanguageRevision>();
         public DbSet<ContentTemplate> ContentTemplates => Set<ContentTemplate>();
@@ -651,6 +653,9 @@ namespace PaladinHubV2.Server.Data
 		private static void ConfigurePageBuilder(
 			ModelBuilder builder)
 		{
+            builder.Entity<FooterEntry>().HasOne<FooterEntry>().WithMany().HasForeignKey(x => x.ParentId).OnDelete(DeleteBehavior.Restrict);
+            builder.Entity<FooterRevision>().HasOne<FooterEntry>().WithMany().HasForeignKey(x => x.EntryId).OnDelete(DeleteBehavior.Restrict);
+            builder.Entity<FooterRevision>().HasIndex(x => new { x.EntryId, x.Version }).IsUnique();
             builder.Entity<SiteLanguage>().HasIndex(l => l.Code).IsUnique();
             builder.Entity<LanguageRevision>().HasOne<SiteLanguage>().WithMany().HasForeignKey(r => r.LanguageId).OnDelete(DeleteBehavior.Restrict);
             builder.Entity<LanguageRevision>().HasIndex(r => new { r.LanguageId, r.Version }).IsUnique();
