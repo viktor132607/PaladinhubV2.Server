@@ -27,6 +27,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="../docs/roles-permissions-upgrade.sql" LogicalName="DatabaseUpgrades.RolesPermissions.sql" />
     <ProjectReference Include="..\PaladinHubV2.Server.Core\PaladinHubV2.Server.Core.csproj" />
   </ItemGroup>
 </Project>
