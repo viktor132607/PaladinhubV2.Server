@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -341,6 +342,14 @@ public sealed class AccessControlHttpPipelineTests
             builder.ConfigureTestServices(services =>
             {
                 services.RemoveAll<IHostedService>();
+                services.RemoveAll<IDistributedCache>();
+                services.AddDistributedMemoryCache();
+
+                services.RemoveAll<AppDbContext>();
+                services.RemoveAll<DbContextOptions<AppDbContext>>();
+                services.AddDbContext<AppDbContext>(
+                    options => options.UseNpgsql(connectionString));
+
                 services.PostConfigure<CookieAuthenticationOptions>(
                     IdentityConstants.ApplicationScheme,
                     options => options.TimeProvider = clock);
