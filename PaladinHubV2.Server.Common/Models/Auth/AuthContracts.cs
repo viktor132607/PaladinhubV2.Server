@@ -73,7 +73,8 @@ namespace PaladinHub.Models.Auth
 		string Email,
 		string FullName,
 		string? AvatarPath,
-		string[] Roles);
+		string[] Roles,
+		string[] Permissions);
 
 	public sealed record AuthSessionResponse(
 		bool IsAuthenticated,
