@@ -91,6 +91,7 @@ public sealed class PageManagementMutationsControllerTests
         Assert.Equal("PageManagement", result.ControllerName);
         Assert.Equal(page.Id, ControllerTestSupport.ReadInt(result.Value, "id"));
         Assert.Equal("Protection", ControllerTestSupport.ReadString(result.Value, "section"));
+        Assert.Contains(db.PageRevisions, revision => revision.PageId == page.Id && revision.Action == "created" && revision.Actor == "page-admin");
     }
 
     [Fact]
@@ -115,7 +116,7 @@ public sealed class PageManagementMutationsControllerTests
     public async Task Update_ReservedBuiltInRoute_ReturnsConflict()
     {
         await using AppDbContext db = CreateContext();
-        ContentPage page = Page("holy", "custom", "Custom", rowVersion: [1]);
+        ContentPage page = Page("holy", "custom", "Custom");
         db.ContentPages.Add(page);
         await db.SaveChangesAsync(TestContext.Current.CancellationToken);
 
@@ -131,7 +132,7 @@ public sealed class PageManagementMutationsControllerTests
     public async Task Update_DuplicateSlug_ReturnsConflict()
     {
         await using AppDbContext db = CreateContext();
-        ContentPage page = Page("holy", "first", "First", rowVersion: [1]);
+        ContentPage page = Page("holy", "first", "First");
         ContentPage other = Page("holy", "taken", "Taken");
         db.ContentPages.AddRange(page, other);
         await db.SaveChangesAsync(TestContext.Current.CancellationToken);
@@ -147,7 +148,7 @@ public sealed class PageManagementMutationsControllerTests
     public async Task Update_InvalidRowVersionEncoding_ReturnsConcurrencyConflict()
     {
         await using AppDbContext db = CreateContext();
-        ContentPage page = Page("holy", "custom", "Custom", rowVersion: [1, 2]);
+        ContentPage page = Page("holy", "custom", "Custom");
         db.ContentPages.Add(page);
         await db.SaveChangesAsync(TestContext.Current.CancellationToken);
         var request = new SavePageRequest
@@ -170,7 +171,7 @@ public sealed class PageManagementMutationsControllerTests
     public async Task Update_MismatchedRowVersion_ReturnsConcurrencyConflict()
     {
         await using AppDbContext db = CreateContext();
-        ContentPage page = Page("holy", "custom", "Custom", rowVersion: [1, 2]);
+        ContentPage page = Page("holy", "custom", "Custom");
         db.ContentPages.Add(page);
         await db.SaveChangesAsync(TestContext.Current.CancellationToken);
 
@@ -185,7 +186,7 @@ public sealed class PageManagementMutationsControllerTests
     public async Task Update_ValidRequest_UpdatesPageAndActor()
     {
         await using AppDbContext db = CreateContext();
-        ContentPage page = Page("holy", "custom", "Old", rowVersion: [1, 2, 3]);
+        ContentPage page = Page("holy", "custom", "Old");
         db.ContentPages.Add(page);
         await db.SaveChangesAsync(TestContext.Current.CancellationToken);
         var controller = CreateController(db, "editor-9");
@@ -202,6 +203,7 @@ public sealed class PageManagementMutationsControllerTests
         Assert.Equal("editor-9", page.UpdatedBy);
         Assert.Equal("Retribution", ControllerTestSupport.ReadString(result.Value, "section"));
         Assert.Equal("new-route", ControllerTestSupport.ReadString(result.Value, "slug"));
+        Assert.Contains(db.PageRevisions, revision => revision.PageId == page.Id && revision.Action == "updated" && revision.Actor == "editor-9");
     }
 
     [Fact]
@@ -214,7 +216,7 @@ public sealed class PageManagementMutationsControllerTests
     }
 
     [Fact]
-    public async Task Delete_ExistingPage_ReturnsNoContentAndRemovesIt()
+    public async Task Delete_ExistingPage_ReturnsNoContentAndSoftDeletesIt()
     {
         await using AppDbContext db = CreateContext();
         ContentPage page = Page("holy", "custom", "Custom");
@@ -224,7 +226,11 @@ public sealed class PageManagementMutationsControllerTests
         IActionResult result = await CreateController(db).Delete(page.Id, TestContext.Current.CancellationToken);
 
         Assert.IsType<NoContentResult>(result);
-        Assert.Empty(db.ContentPages.IgnoreQueryFilters());
+        Assert.Empty(db.ContentPages);
+        ContentPage deleted = Assert.Single(db.ContentPages.IgnoreQueryFilters());
+        Assert.True(deleted.IsDeleted);
+        Assert.True(deleted.IsArchived);
+        Assert.False(deleted.IsPublished);
     }
 
     private static async Task AssertCreateValidationAsync(SavePageRequest request, string expected)
@@ -254,8 +260,7 @@ public sealed class PageManagementMutationsControllerTests
         string section,
         string slug,
         string title,
-        bool isDeleted = false,
-        byte[]? rowVersion = null) => new()
+        bool isDeleted = false) => new()
     {
         Section = section,
         Slug = slug,
@@ -265,7 +270,7 @@ public sealed class PageManagementMutationsControllerTests
         IsDeleted = isDeleted,
         CreatedAt = DateTime.UtcNow.AddDays(-1),
         UpdatedAt = DateTime.UtcNow.AddDays(-1),
-        RowVersion = rowVersion ?? Array.Empty<byte>()
+        RowVersion = Array.Empty<byte>()
     };
 
     private static PageManagementMutationsController CreateController(AppDbContext db, string actor = "admin")
@@ -280,13 +285,6 @@ public sealed class PageManagementMutationsControllerTests
         return controller;
     }
 
-    private static AppDbContext CreateContext()
-    {
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase($"page-management-mutations-{Guid.NewGuid():N}")
-            .ConfigureWarnings(warnings => warnings.Ignore(
-                Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning))
-            .Options;
-        return new AppDbContext(options);
-    }
+    private static AppDbContext CreateContext() =>
+        PageBuilderSqliteTestDatabase.CreateContext();
 }
