@@ -46,8 +46,8 @@ CREATE TABLE IF NOT EXISTS "AccessControlAuditEntries" (
     "TargetRoleName" character varying(256) NULL,
     "TargetUserId" character varying(450) NULL,
     "TargetUserName" character varying(256) NULL,
-    "OldState" text NOT NULL DEFAULT '{}',
-    "NewState" text NOT NULL DEFAULT '{}',
+    "OldState" text NOT NULL DEFAULT '{{}}',
+    "NewState" text NOT NULL DEFAULT '{{}}',
     "CreatedAtUtc" timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
