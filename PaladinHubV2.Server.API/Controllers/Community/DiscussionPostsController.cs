@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
+using PaladinHubV2.Server.API.Security;
+using PaladinHubV2.Server.Core.Security;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using PaladinHub.Models.Discussions;
@@ -14,13 +16,16 @@ namespace PaladinHubV2.Server.API.Controllers.Community
 	{
 		private readonly IDiscussionService _discussionService;
 		private readonly UserManager<User> _userManager;
+        private readonly IAdminPermissionEvaluator? _permissionEvaluator;
 
 		public DiscussionPostsController(
 			IDiscussionService discussionService,
-			UserManager<User> userManager)
+			UserManager<User> userManager,
+            IAdminPermissionEvaluator? permissionEvaluator = null)
 		{
 			_discussionService = discussionService;
 			_userManager = userManager;
+            _permissionEvaluator = permissionEvaluator;
 		}
 
 		[HttpPost]
@@ -87,7 +92,8 @@ namespace PaladinHubV2.Server.API.Controllers.Community
 				});
 			}
 
-			bool isAdmin = User.IsInRole("Admin");
+			bool isAdmin = _permissionEvaluator is not null &&
+                await _permissionEvaluator.HasPermissionAsync(User, AdminPermissions.DiscussionPosts.Delete, HttpContext.RequestAborted);
 			if (!isAdmin && post.AuthorId != userId)
 			{
 				return Forbid();

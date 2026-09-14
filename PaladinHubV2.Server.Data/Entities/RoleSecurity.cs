@@ -15,6 +15,9 @@ public sealed class RoleSecurityProfile
 
     public bool IsDisabled { get; set; }
 
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public bool IsDeleted => Revisions.Any(revision => revision.Version == Version && revision.Action == "delete");
+
     [ConcurrencyCheck]
     public int Version { get; set; } = 1;
 

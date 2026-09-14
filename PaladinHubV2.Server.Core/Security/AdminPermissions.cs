@@ -270,6 +270,12 @@ public static class AdminPermissions
         public const string Manage = "products.manage";
     }
 
+    public static class DiscussionPosts
+    {
+        public const string Delete = "discussion_posts.delete";
+        public const string Manage = "discussion_posts.manage";
+    }
+
     public static class ProductReviews
     {
         public const string Delete = "product_reviews.delete";

@@ -106,6 +106,28 @@ public sealed class AccessControlEnforcementTests
         Assert.Equal(0, context.Request.Body.Position);
     }
 
+    [Theory]
+    [InlineData("{\"action\":\"archive\",\"action\":\"delete\"}")]
+    [InlineData("{\"action\":\"archive\",\"Action\":\"restore\"}")]
+    [InlineData("{\"action\":null,\"action\":\"delete\"}")]
+    [InlineData("{\"action\":\"archive\",\"ACTION\":\"archive\"}")]
+    public async Task AmbiguousLifecycleNeverReachesController(string body)
+    {
+        foreach (var definition in AdminEndpointRegistry.All.Where(x => !x.MixedAccess && x.Permissions.Count > 1))
+        {
+            bool called = false;
+            var middleware = new AdminPermissionEnforcementMiddleware(_ => { called = true; return Task.CompletedTask; });
+            var authorization = new RecordingAuthorizationService(succeed: true);
+            var context = Context(definition.Controller, NormalizeAction(definition.Action), definition.HttpMethod, true);
+            context.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(body));
+            await middleware.InvokeAsync(context, authorization);
+            Assert.False(called);
+            Assert.Equal(0, authorization.CallCount);
+            Assert.Equal(0, context.Request.Body.Position);
+            Assert.InRange(context.Response.StatusCode, 400, 499);
+        }
+    }
+
     [Fact]
     public async Task MixedAccessEndpointIsNotBlanketLockedByMiddleware()
     {

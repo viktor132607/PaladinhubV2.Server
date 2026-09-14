@@ -55,7 +55,7 @@ public sealed record RoleResponse(
     bool IsDisabled,
     int Version,
     int UserCount,
-    IReadOnlyList<string> Permissions);
+    IReadOnlyList<string> Permissions, bool IsDeleted = false);
 
 internal sealed record RoleSnapshot(string Name, bool IsDisabled, string[] Permissions);
 internal sealed record MembershipSnapshot(string UserId, string RoleId, bool Assigned);
@@ -86,6 +86,7 @@ public sealed class AccessControlAdminService
             .AsNoTracking()
             .Include(profile => profile.Role)
             .Include(profile => profile.Permissions)
+            .Include(profile => profile.Revisions)
             .OrderBy(profile => profile.Role.Name)
             .ToArrayAsync(cancellationToken);
 
@@ -266,7 +267,9 @@ public sealed class AccessControlAdminService
 
         await using var db = new AccessControlDbContext(_options);
         await using var transaction = await BeginMutationAsync(db, cancellationToken);
+        await AccessControlMutationGuard.EnsureRoleUpdateIsSafeAsync(db, roleId, request, actor, cancellationToken);
         RoleSecurityProfile profile = await RequireProfileAsync(db, roleId, tracking: true, cancellationToken);
+        if (profile.IsDeleted) throw Conflict("Restore the deleted role before changing it.");
         RequireVersion(profile, request.Version);
         RoleSnapshot before = Snapshot(profile);
         SystemRoleDefinition? systemRole = SystemRoleCatalog.Find(profile.Role.Name);
@@ -311,7 +314,9 @@ public sealed class AccessControlAdminService
 
         await using var db = new AccessControlDbContext(_options);
         await using var transaction = await BeginMutationAsync(db, cancellationToken);
+        await AccessControlMutationGuard.EnsurePermissionReplacementIsSafeAsync(db, roleId, request, actor, cancellationToken);
         RoleSecurityProfile profile = await RequireProfileAsync(db, roleId, tracking: true, cancellationToken);
+        if (profile.IsDeleted) throw Conflict("Restore the deleted role before changing it.");
         RequireVersion(profile, request.Version);
         RoleSnapshot before = Snapshot(profile);
         SystemRoleDefinition? systemRole = SystemRoleCatalog.Find(profile.Role.Name);
@@ -346,12 +351,14 @@ public sealed class AccessControlAdminService
     {
         await using var db = new AccessControlDbContext(_options);
         await using var transaction = await BeginMutationAsync(db, cancellationToken);
+        await AccessControlMutationGuard.EnsureRestoreIsSafeAsync(db, roleId, request, actor, cancellationToken);
         RoleSecurityProfile profile = await RequireProfileAsync(db, roleId, tracking: true, cancellationToken);
         RequireVersion(profile, request.Version);
         RoleSecurityRevision revision = await db.RoleSecurityRevisions
             .AsNoTracking()
             .SingleOrDefaultAsync(item => item.RoleId == roleId && item.Version == request.RevisionVersion, cancellationToken)
             ?? throw NotFound("Role revision was not found.");
+        if (revision.Action == "delete") throw Conflict("Choose a revision from before deletion.");
         RoleSnapshot restored = JsonSerializer.Deserialize<RoleSnapshot>(revision.Snapshot)
             ?? throw Conflict("Role revision snapshot is invalid.");
         ValidateRoleName(restored.Name);
@@ -400,6 +407,7 @@ public sealed class AccessControlAdminService
         await using var db = new AccessControlDbContext(_options);
         await using var transaction = await BeginMutationAsync(db, cancellationToken);
         RoleSecurityProfile profile = await RequireProfileAsync(db, roleId, tracking: true, cancellationToken);
+        if (profile.IsDeleted) throw Conflict("Restore the deleted role before changing it.");
         RequireVersion(profile, version);
         if (profile.IsSystem || SystemRoleCatalog.IsSystemRole(profile.Role.Name))
         {
@@ -413,21 +421,20 @@ public sealed class AccessControlAdminService
 
         string oldState = SerializeSnapshot(profile);
         AddAudit(db, "role.delete", actor, roleId, profile.Role.Name, null, null, oldState, "{}");
-        RoleSecurityRevision[] revisions = await db.RoleSecurityRevisions
-            .Where(item => item.RoleId == roleId)
-            .ToArrayAsync(cancellationToken);
-        db.RoleSecurityRevisions.RemoveRange(revisions);
-        db.RolePermissions.RemoveRange(profile.Permissions);
-        db.RoleSecurityProfiles.Remove(profile);
-        db.Roles.Remove(profile.Role);
+        profile.IsDisabled = true;
+        Bump(profile);
+        AddRevision(db, profile, "delete", actor.Name);
         await SaveMutationAsync(db, transaction, cancellationToken);
     }
 
     public async Task AssignUserAsync(string roleId, string userId, AccessControlActor actor, CancellationToken cancellationToken = default)
     {
+        if (string.Equals(actor.Id, userId, StringComparison.Ordinal))
+            throw Conflict("Users cannot assign roles to themselves.");
         await using var db = new AccessControlDbContext(_options);
         await using var transaction = await BeginMutationAsync(db, cancellationToken);
         RoleSecurityProfile profile = await RequireProfileAsync(db, roleId, tracking: true, cancellationToken);
+        if (profile.IsDeleted) throw Conflict("Restore the deleted role before changing it.");
         if (profile.IsDisabled)
         {
             throw Conflict("Disabled roles cannot be assigned.");
@@ -561,7 +568,8 @@ public sealed class AccessControlAdminService
         }
         IQueryable<RoleSecurityProfile> query = db.RoleSecurityProfiles
             .Include(profile => profile.Role)
-            .Include(profile => profile.Permissions);
+            .Include(profile => profile.Permissions)
+            .Include(profile => profile.Revisions);
         if (!tracking)
         {
             query = query.AsNoTracking();
@@ -689,7 +697,7 @@ public sealed class AccessControlAdminService
             profile.IsDisabled,
             profile.Version,
             userCount,
-            permissions);
+            permissions, profile.IsDeleted);
     }
 
     private static async Task<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction> BeginMutationAsync(

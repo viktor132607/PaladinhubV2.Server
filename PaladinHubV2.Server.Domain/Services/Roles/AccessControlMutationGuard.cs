@@ -41,12 +41,17 @@ public sealed class AccessControlMutationGuard
     }
 
     public async Task EnsureRoleUpdateIsSafeAsync(
-        string roleId,
-        UpdateRoleRequest request,
-        AccessControlActor actor,
+        string roleId, UpdateRoleRequest request, AccessControlActor actor,
         CancellationToken cancellationToken = default)
     {
         await using var db = new AccessControlDbContext(_options);
+        await EnsureRoleUpdateIsSafeAsync(db, roleId, request, actor, cancellationToken);
+    }
+
+    internal static async Task EnsureRoleUpdateIsSafeAsync(
+        AccessControlDbContext db, string roleId, UpdateRoleRequest request,
+        AccessControlActor actor, CancellationToken cancellationToken)
+    {
         if (!await IsActorAssignedAsync(db, roleId, actor.Id, cancellationToken))
         {
             return;
@@ -67,12 +72,17 @@ public sealed class AccessControlMutationGuard
     }
 
     public async Task EnsurePermissionReplacementIsSafeAsync(
-        string roleId,
-        ReplaceRolePermissionsRequest request,
-        AccessControlActor actor,
+        string roleId, ReplaceRolePermissionsRequest request, AccessControlActor actor,
         CancellationToken cancellationToken = default)
     {
         await using var db = new AccessControlDbContext(_options);
+        await EnsurePermissionReplacementIsSafeAsync(db, roleId, request, actor, cancellationToken);
+    }
+
+    internal static async Task EnsurePermissionReplacementIsSafeAsync(
+        AccessControlDbContext db, string roleId, ReplaceRolePermissionsRequest request,
+        AccessControlActor actor, CancellationToken cancellationToken)
+    {
         if (!await IsActorAssignedAsync(db, roleId, actor.Id, cancellationToken))
         {
             return;
@@ -101,12 +111,17 @@ public sealed class AccessControlMutationGuard
     }
 
     public async Task EnsureRestoreIsSafeAsync(
-        string roleId,
-        RestoreRoleRevisionRequest request,
-        AccessControlActor actor,
+        string roleId, RestoreRoleRevisionRequest request, AccessControlActor actor,
         CancellationToken cancellationToken = default)
     {
         await using var db = new AccessControlDbContext(_options);
+        await EnsureRestoreIsSafeAsync(db, roleId, request, actor, cancellationToken);
+    }
+
+    internal static async Task EnsureRestoreIsSafeAsync(
+        AccessControlDbContext db, string roleId, RestoreRoleRevisionRequest request,
+        AccessControlActor actor, CancellationToken cancellationToken)
+    {
         if (!await IsActorAssignedAsync(db, roleId, actor.Id, cancellationToken))
         {
             return;

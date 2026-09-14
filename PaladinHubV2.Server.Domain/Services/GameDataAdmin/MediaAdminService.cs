@@ -297,8 +297,10 @@ public sealed class MediaAdminService
         Guid id,
         CancellationToken cancellationToken)
     {
+        string legacyPath = "/api/spell-icons/" + id.ToString();
         return _db.Set<SeoEntry>().CountAsync(
-            entry => !entry.IsDeleted && entry.SocialImageMediaId == id,
+            entry => !entry.IsDeleted && (entry.SocialImageMediaId == id ||
+                entry.ImageUrl.ToLower().Contains(legacyPath)),
             cancellationToken);
     }
 

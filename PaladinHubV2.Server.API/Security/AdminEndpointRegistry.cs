@@ -229,6 +229,8 @@ public static class AdminEndpointRegistry
             mixed: true, notes: "Public detail action has an Admin-only visibility override for otherwise hidden product state."),
         E("Products", "DetailsLegacy", "GET", "/Products/Details", "products", "read", Authenticated, AdminPermissions.Products.Read,
             mixed: true, notes: "Public detail action has an Admin-only visibility override for otherwise hidden product state."),
+        E("DiscussionPosts", "Delete", "DELETE", "/api/discussions/{id:guid}", "discussion_posts", "delete", Authenticated, AdminPermissions.DiscussionPosts.Delete,
+            mixed: true, notes: "Owners may delete their own post; moderation requires a live permission decision."),
         E("ProductReviews", "DeleteReviewApi", "DELETE", "/api/products/{productId}/reviews/{reviewId}", "product_reviews", "delete", Authenticated, AdminPermissions.ProductReviews.Delete,
             mixed: true, notes: "Owners may delete their own reviews; administrative override currently uses User.IsInRole(\"Admin\")."),
         E("ProductReviews", "DeleteReviewLegacy", "POST", "/Products/DeleteReview | /api/products/DeleteReview", "product_reviews", "delete", Authenticated, AdminPermissions.ProductReviews.Delete,

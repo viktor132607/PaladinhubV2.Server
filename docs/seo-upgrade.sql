@@ -115,7 +115,8 @@ BEGIN
            SELECT 1
            FROM "SeoEntries" seo
            WHERE NOT seo."IsDeleted"
-             AND seo."SocialImageMediaId" = NEW."Id"
+             AND (seo."SocialImageMediaId" = NEW."Id"
+                  OR lower(seo."ImageUrl") LIKE '%/api/spell-icons/' || NEW."Id"::text || '%')
        ) THEN
         RAISE EXCEPTION 'Media is referenced by SEO settings.'
             USING ERRCODE = '23503';

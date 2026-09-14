@@ -10,6 +10,8 @@ using PaladinHubV2.Server.API.Controllers.Community;
 using PaladinHubV2.Server.Data.Entities;
 using PaladinHubV2.Server.Domain.Services.Discussions;
 using Xunit;
+using PaladinHubV2.Server.API.Security;
+using PaladinHubV2.Server.Core.Security;
 
 namespace PaladinHubV2.Server.Tests.Controllers.Community;
 
@@ -132,6 +134,20 @@ public sealed class DiscussionPostsControllerTests
         discussions.Verify(service => service.DeleteAsync(id, "admin-user", true), Times.Once);
     }
 
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task ModerationUsesLivePermissionRatherThanRoleClaim(bool staleAdminClaim, bool canModerate)
+    {
+        var id = Guid.NewGuid();
+        var (controller, discussions, _) = CreateController("moderator", staleAdminClaim, canModerate);
+        discussions.Setup(x => x.GetByIdAsync(id)).ReturnsAsync(new DiscussionPost { Id = id, AuthorId = "owner", Title = "T", Content = "C" });
+        var result = await controller.Delete(id);
+        if (canModerate) Assert.IsType<NoContentResult>(result);
+        else Assert.IsType<ForbidResult>(result);
+        discussions.Verify(x => x.DeleteAsync(id, "moderator", true), canModerate ? Times.Once() : Times.Never());
+    }
+
     [Fact]
     public async Task Like_WhenUserMissing_ReturnsUnauthorized()
     {
@@ -203,7 +219,7 @@ public sealed class DiscussionPostsControllerTests
         Mock<IDiscussionService> Discussions,
         Mock<UserManager<User>> Users) CreateController(
         string? userId,
-        bool isAdmin = false)
+        bool isAdmin = false, bool? canModerate = null)
     {
         var discussions = new Mock<IDiscussionService>();
         var users = CreateUserManager();
@@ -219,7 +235,10 @@ public sealed class DiscussionPostsControllerTests
             claims.Add(new Claim(ClaimTypes.Role, "Admin"));
         }
 
-        var controller = new DiscussionPostsController(discussions.Object, users.Object)
+        var evaluator = new Mock<IAdminPermissionEvaluator>();
+        evaluator.Setup(x => x.HasPermissionAsync(It.IsAny<ClaimsPrincipal>(), AdminPermissions.DiscussionPosts.Delete, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(canModerate ?? isAdmin);
+        var controller = new DiscussionPostsController(discussions.Object, users.Object, evaluator.Object)
         {
             ControllerContext = new ControllerContext
             {

@@ -14,6 +14,7 @@ public sealed class AccessControlConcurrentMutationTests
         string? root = Environment.GetEnvironmentVariable("SEO_POSTGRES_CONNECTION");
         if (string.IsNullOrWhiteSpace(root))
         {
+            Assert.Skip("Set SEO_POSTGRES_CONNECTION to run PostgreSQL integration tests.");
             return;
         }
 
@@ -115,9 +116,10 @@ public sealed class AccessControlConcurrentMutationTests
                 verify);
             long membershipCount = (long)(await membershipCountCommand.ExecuteScalarAsync(Ct))!;
 
-            Assert.True(
-                (roleCount == 1 && membershipCount == 1) ||
-                (roleCount == 0 && membershipCount == 0));
+            Assert.Equal(1, roleCount); // Deletion preserves the role and revision history.
+            var finalRole = await assignService.GetRoleAsync("role-editor", Ct);
+            Assert.Equal(results[1], finalRole.IsDeleted);
+            Assert.Equal(results[0] ? 1 : 0, membershipCount);
         }
         finally
         {

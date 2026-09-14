@@ -30,6 +30,12 @@ public sealed class EffectivePermissionService
 
         await using var database = new AccessControlDbContext(options);
 
+        var now = DateTimeOffset.UtcNow;
+        if (!await database.Users.AsNoTracking().AnyAsync(user =>
+                user.Id == userId && (!user.LockoutEnabled || user.LockoutEnd == null || user.LockoutEnd <= now),
+                cancellationToken))
+            return Array.Empty<string>();
+
         var memberships = await (
             from membership in database.UserRoles.AsNoTracking()
             join profile in database.RoleSecurityProfiles.AsNoTracking()

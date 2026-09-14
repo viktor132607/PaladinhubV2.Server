@@ -14,6 +14,7 @@ public sealed class AccessControlPostgresIntegrationTests
         string? connectionString = Environment.GetEnvironmentVariable("SEO_POSTGRES_CONNECTION");
         if (string.IsNullOrWhiteSpace(connectionString))
         {
+            Assert.Skip("Set SEO_POSTGRES_CONNECTION to run PostgreSQL integration tests.");
             return;
         }
 
@@ -137,6 +138,7 @@ public sealed class AccessControlPostgresIntegrationTests
         string? connectionString = Environment.GetEnvironmentVariable("SEO_POSTGRES_CONNECTION");
         if (string.IsNullOrWhiteSpace(connectionString))
         {
+            Assert.Skip("Set SEO_POSTGRES_CONNECTION to run PostgreSQL integration tests.");
             return;
         }
 

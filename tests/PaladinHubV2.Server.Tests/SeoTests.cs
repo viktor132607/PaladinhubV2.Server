@@ -64,6 +64,39 @@ public sealed class SeoTests
             CreatedAtUtc = DateTime.UtcNow
         };
 
+    [Fact]
+    public void ManagedMediaUrlCannotBypassTrackedReference()
+    {
+        Assert.NotNull(SeoService.ValidateShape(Request() with {
+            ImageUrl = "https://api.example.com/api/spell-icons/11111111-1111-1111-1111-111111111111"
+        }));
+        Assert.Null(SeoService.ValidateShape(Request() with { ImageUrl = "https://cdn.example.com/image.jpg" }));
+    }
+
+    [Fact]
+    public async Task SnapshotIncludesPublicResourcesAndHashesTheirMetadataAndOrigins()
+    {
+        await using var db = PageBuilderSqliteTestDatabase.CreateContext();
+        var product = new Product("Test product", 1m) { Description = "Product description" };
+        db.Products.Add(product);
+        await db.SaveChangesAsync(Ct);
+        var service = new SeoService(db);
+        var before = await service.GetPublicSnapshotAsync("https://site.test", "https://api.test", Ct);
+        string path = "/products/" + product.Id;
+        Assert.Contains(path, before.StaticRoutes);
+        Assert.Contains("/Products/Details/" + product.Id, before.StaticRoutes);
+        Assert.Equal("Test product", Assert.Single(before.Entries, entry => entry.Path == path).Title);
+        product.Name = "Updated product";
+        await db.SaveChangesAsync(Ct);
+        var updated = await service.GetPublicSnapshotAsync("https://site.test", "https://api.test", Ct);
+        Assert.NotEqual(before.SnapshotVersion, updated.SnapshotVersion);
+        var moved = await service.GetPublicSnapshotAsync("https://new-site.test", "https://api.test", Ct);
+        Assert.NotEqual(updated.SnapshotVersion, moved.SnapshotVersion);
+        db.Products.Remove(product);
+        await db.SaveChangesAsync(Ct);
+        Assert.DoesNotContain(path, (await service.GetPublicSnapshotAsync("https://site.test", "https://api.test", Ct)).StaticRoutes);
+    }
+
     [Theory]
     [InlineData("/Admin/Seo")]
     [InlineData("/api/seo")]

@@ -501,14 +501,45 @@ public sealed class SeoService
             publicPages.Add(new SeoPublicPage(page.Id, page.Title, path));
         }
 
+        var resourceRoutes = new List<string>();
+        var products = await _db.Products.AsNoTracking().Include(product => product.Images).OrderBy(product => product.Id).ToListAsync(ct);
+        foreach (var product in products)
+        {
+            // IDs are path segments, never executable URL syntax.
+            if (!Guid.TryParse(product.Id, out _)) continue;
+            string path = "/products/" + product.Id;
+            resourceRoutes.Add(path);
+            resourceRoutes.Add("/Products/Details/" + product.Id);
+            string image = product.Images.OrderBy(image => image.Id == product.ThumbnailImageId ? 0 : 1)
+                .ThenBy(image => image.SortOrder).Select(image => image.Url).FirstOrDefault() ?? "";
+            AddResourceEntry(path, product.Name, product.Description ?? "", image);
+        }
+        var discussions = await _db.DiscussionPosts.AsNoTracking().OrderBy(post => post.Id).ToListAsync(ct);
+        foreach (var post in discussions)
+        {
+            string path = "/Discussions/Details/" + post.Id;
+            resourceRoutes.Add(path);
+            AddResourceEntry(path, post.Title, post.Content, "");
+        }
+
+        void AddResourceEntry(string path, string title, string description, string image)
+        {
+            if (publicEntries.Any(entry => entry.Path.Equals(path, StringComparison.OrdinalIgnoreCase))) return;
+            string plain = System.Net.WebUtility.HtmlDecode(System.Text.RegularExpressions.Regex.Replace(
+                description, "<[^>]*>", " ", System.Text.RegularExpressions.RegexOptions.None, TimeSpan.FromSeconds(1)));
+            if (plain.Length > 500) plain = plain[..500];
+            if (!IsSafeAbsoluteHttpUrl(image)) image = "";
+            var id = new Guid(SHA256.HashData(Encoding.UTF8.GetBytes("resource:" + path))[..16]);
+            publicEntries.Add(new SeoPublicEntry(id, 1, null, path, title, plain, "", "", "", image, null, null));
+        }
+
         string[] staticRoutes = SeoRouteRegistry.StaticSeoTargets
-            .Select(route => route.Route)
-            .ToArray();
+            .Select(route => route.Route).Concat(resourceRoutes).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
 
         string snapshotVersion = BuildSnapshotVersion(
             publicEntries,
             publicPages,
-            staticRoutes);
+            staticRoutes, normalizedSiteUrl, apiOrigin);
 
         return new SeoPublicSnapshot(
             normalizedSiteUrl,
@@ -556,6 +587,12 @@ public sealed class SeoService
         {
             return "External social image must be an absolute HTTP/HTTPS URL without userinfo, fragments, backslashes or control characters.";
         }
+
+        // This URL namespace is reserved for managed assets. Always require a
+        // tracked reference, including when the same route is pasted with a host.
+        if (Uri.TryCreate(imageUrl, UriKind.Absolute, out var imageUri) &&
+            imageUri.AbsolutePath.Contains("/api/spell-icons/", StringComparison.OrdinalIgnoreCase))
+            return "Use the media library for /api/spell-icons/ images so their dependency can be protected.";
 
         if (!request.PageId.HasValue)
         {
@@ -910,16 +947,14 @@ public sealed class SeoService
     private static string BuildSnapshotVersion(
         IEnumerable<SeoPublicEntry> entries,
         IEnumerable<SeoPublicPage> pages,
-        IEnumerable<string> staticRoutes)
+        IEnumerable<string> staticRoutes, string siteUrl, string apiOrigin)
     {
-        IEnumerable<string> parts =
-            entries.Select(entry => $"e:{entry.Id:N}:{entry.Version}:{entry.Path}")
-                .Concat(pages.Select(page => $"p:{page.Id}:{page.Path}"))
-                .Concat(staticRoutes.Select(route => $"s:{route}"))
-                .Append($"r:{SeoRouteRegistry.Version}")
-                .OrderBy(value => value, StringComparer.Ordinal);
-
-        string payload = string.Join('|', parts);
+        string payload = JsonSerializer.Serialize(new {
+            SiteUrl = siteUrl, ApiOrigin = apiOrigin, Registry = SeoRouteRegistry.Version,
+            Entries = entries.OrderBy(entry => entry.Id),
+            Pages = pages.OrderBy(page => page.Id),
+            Routes = staticRoutes.OrderBy(route => route, StringComparer.Ordinal)
+        });
         return Convert.ToHexString(
                 SHA256.HashData(Encoding.UTF8.GetBytes(payload)))
             .ToLowerInvariant();

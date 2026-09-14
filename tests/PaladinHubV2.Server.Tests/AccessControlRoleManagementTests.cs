@@ -95,6 +95,35 @@ public sealed class AccessControlRoleManagementTests : IAsyncDisposable
         Assert.Equal([AdminPermissions.Pages.Read], restored.Permissions);
     }
 
+    [Fact]
+    public async Task DeletedRoleRetainsHistoryAndCanBeRestoredWithoutMemberships()
+    {
+        var role = await service.CreateRoleAsync(new CreateRoleRequest("Recoverable", [AdminPermissions.Seo.Read]), Actor, Ct);
+        await service.DeleteRoleAsync(role.Id, role.Version, Actor, Ct);
+        var deleted = await service.GetRoleAsync(role.Id, Ct);
+        Assert.True(deleted.IsDeleted);
+        Assert.True(deleted.IsDisabled);
+        Assert.Equal(2, (await service.GetHistoryAsync(role.Id, Ct)).Count);
+        await Assert.ThrowsAsync<AccessControlAdminException>(() => service.UpdateRoleAsync(role.Id,
+            new UpdateRoleRequest("Reenabled", false, deleted.Version), Actor, Ct));
+        var restored = await service.RestoreRevisionAsync(role.Id, new RestoreRoleRevisionRequest(1, deleted.Version), Actor, Ct);
+        Assert.False(restored.IsDeleted);
+        Assert.False(restored.IsDisabled);
+        Assert.Equal(role.Permissions, restored.Permissions);
+        Assert.Empty(await service.GetRoleUsersAsync(role.Id, Ct));
+    }
+
+    [Fact]
+    public async Task ServiceRejectsSelfGrantEvenWhenControllerGuardWasNotCalled()
+    {
+        var role = await service.CreateRoleAsync(new CreateRoleRequest("Own role", [AdminPermissions.Seo.Read]), Actor, Ct);
+        await service.AssignUserAsync(role.Id, "admin-1", Actor, Ct);
+        await Assert.ThrowsAsync<AccessControlAdminException>(() => service.ReplacePermissionsAsync(role.Id,
+            new ReplaceRolePermissionsRequest([AdminPermissions.Seo.Read, AdminPermissions.Seo.Delete], role.Version),
+            new AccessControlActor("admin-1", "Admin"), Ct));
+        Assert.Equal(role.Permissions, (await service.GetRoleAsync(role.Id, Ct)).Permissions);
+    }
+
     private static void SeedAdmin(AccessControlDbContext db)
     {
         var role = new IdentityRole { Id = "role-admin", Name = "Admin", NormalizedName = "ADMIN" };

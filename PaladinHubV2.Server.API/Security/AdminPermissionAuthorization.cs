@@ -196,19 +196,22 @@ public sealed class AdminPermissionEnforcementMiddleware(RequestDelegate next)
                 return null;
             }
 
+            string? action = null;
+            bool found = false;
             foreach (JsonProperty property in document.RootElement.EnumerateObject())
             {
-                if (string.Equals(
-                        property.Name,
-                        "action",
-                        StringComparison.OrdinalIgnoreCase) &&
-                    property.Value.ValueKind == JsonValueKind.String)
-                {
-                    return property.Value.GetString();
-                }
+                if (!string.Equals(property.Name, "action", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                // Model binding accepts the last matching key. Reject ambiguity before
+                // authorization so a different operation can never reach the controller.
+                if (found || property.Value.ValueKind != JsonValueKind.String)
+                    return null;
+                found = true;
+                action = property.Value.GetString();
             }
 
-            return null;
+            return action;
         }
         catch (JsonException)
         {

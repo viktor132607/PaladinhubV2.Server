@@ -14,6 +14,7 @@ public sealed class SeoPostgresIntegrationTests
             "SEO_POSTGRES_CONNECTION");
         if (string.IsNullOrWhiteSpace(connectionString))
         {
+            Assert.Skip("Set SEO_POSTGRES_CONNECTION to run PostgreSQL integration tests.");
             return;
         }
 
@@ -173,6 +174,7 @@ public sealed class SeoPostgresIntegrationTests
             "SEO_POSTGRES_CONNECTION");
         if (string.IsNullOrWhiteSpace(connectionString))
         {
+            Assert.Skip("Set SEO_POSTGRES_CONNECTION to run PostgreSQL integration tests.");
             return;
         }
 
