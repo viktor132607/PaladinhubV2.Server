@@ -1,8 +1,10 @@
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 using Microsoft.EntityFrameworkCore;
 
 namespace PaladinHubV2.Server.Data.Entities;
 
+[Table("SeoEntries")]
 [Index(nameof(PageId))]
 [Index(nameof(SocialImageMediaId))]
 public sealed class SeoEntry
@@ -51,6 +53,7 @@ public sealed class SeoEntry
     public ICollection<SeoRevision> Revisions { get; set; } = new List<SeoRevision>();
 }
 
+[Table("SeoRevisions")]
 [Index(nameof(EntryId), nameof(Version), IsUnique = true)]
 public sealed class SeoRevision
 {
