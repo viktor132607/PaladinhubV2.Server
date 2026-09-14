@@ -401,3 +401,5 @@ FodyWeavers.xsd
 
 .DS_Store
 .env
+# Full translation reports are stored losslessly compressed.
+translation-workspace/server-inventory.json
