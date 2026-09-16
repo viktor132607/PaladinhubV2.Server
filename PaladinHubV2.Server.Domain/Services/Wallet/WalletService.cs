@@ -141,7 +141,7 @@ namespace PaladinHubV2.Server.Domain.Services.Wallet
 
 		private static decimal ValidateAmount(decimal amount)
 		{
-			if (amount <= 0m)
+			if (amount < 0.01m)
 			{
 				throw new ArgumentOutOfRangeException(
 					nameof(amount),

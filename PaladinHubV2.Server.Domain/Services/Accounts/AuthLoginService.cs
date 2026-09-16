@@ -104,7 +104,8 @@ public sealed class AuthLoginService
 	public async Task<AuthLoginResult> TwoFactorAsync(
 		string rawCode,
 		bool rememberMe,
-		bool rememberMachine)
+		bool rememberMachine,
+		string provider = "Authenticator")
 	{
 		User? user =
 			await _signInManager.GetTwoFactorAuthenticationUserAsync();
@@ -126,8 +127,14 @@ public sealed class AuthLoginService
 				AuthLoginError.InvalidTwoFactorCodeFormat);
 		}
 
+		if (provider != "Authenticator" && provider != "Email")
+			return new AuthLoginResult(AuthLoginError.InvalidTwoFactorCode);
+		if (provider == "Email" ? !await AccountFactors.EmailAsync(_userManager, user) : !await AccountFactors.AuthenticatorAsync(_userManager, user))
+			return new AuthLoginResult(AuthLoginError.InvalidTwoFactorCode);
+
 		SignInResult result =
-			await _signInManager.TwoFactorAuthenticatorSignInAsync(
+			await _signInManager.TwoFactorSignInAsync(
+				provider,
 				code,
 				rememberMe,
 				rememberMachine);

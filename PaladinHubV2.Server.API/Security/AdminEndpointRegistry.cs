@@ -31,6 +31,8 @@ public static class AdminEndpointRegistry
 
     private static readonly AdminEndpointDefinition[] Definitions =
     [
+        E("AccountWallet", "DevTopUp", "POST", "/api/account/DevTopUp", "users", "manage", AdminRole, AdminPermissions.Users.Manage,
+            notes: "Legacy administrative wallet credit; public top-ups require a paid Stripe checkout."),
         E("AccessControl", "Permissions", "GET", "/Admin/api/access-control/permissions", "role_permissions", "read", AdminRole, AdminPermissions.RolePermissions.Read),
         E("AccessControl", "Roles", "GET", "/Admin/api/access-control/roles", "roles", "read", AdminRole, AdminPermissions.Roles.Read),
         E("AccessControl", "Role", "GET", "/Admin/api/access-control/roles/{roleId}", "roles", "read", AdminRole, AdminPermissions.Roles.Read),

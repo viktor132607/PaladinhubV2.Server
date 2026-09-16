@@ -49,7 +49,7 @@ namespace PaladinHubV2.Server.Domain.Services.Accounts
 			User user,
 			bool reset)
 		{
-			if (user.TwoFactorEnabled)
+			if (await AccountFactors.AuthenticatorAsync(_userManager, user))
 			{
 				if (reset)
 				{
@@ -103,10 +103,8 @@ namespace PaladinHubV2.Server.Domain.Services.Accounts
 				"&algorithm=SHA1" +
 				"&period=30";
 
-			string qrCodeUrl =
-				"https://api.qrserver.com/v1/create-qr-code/" +
-				"?size=180x180&data=" +
-				Uri.EscapeDataString(authenticatorUri);
+			// Never disclose the authenticator secret to an external QR service.
+			string? qrCodeUrl = null;
 
 			return new TwoFactorSetupResult(
 				TwoFactorSetupError.None,
@@ -120,7 +118,7 @@ namespace PaladinHubV2.Server.Domain.Services.Accounts
 			User user,
 			string? code)
 		{
-			if (user.TwoFactorEnabled)
+			if (await AccountFactors.AuthenticatorAsync(_userManager, user))
 			{
 				return new TwoFactorEnableResult(
 					TwoFactorEnableError.AlreadyEnabled,
@@ -152,6 +150,7 @@ namespace PaladinHubV2.Server.Domain.Services.Accounts
 					Array.Empty<string>());
 			}
 
+			AccountFactors.Ensure(await _userManager.SetAuthenticationTokenAsync(user, AccountFactors.Store, "Authenticator2FA", "true"));
 			await _security.ToggleTwoFactor(user, true);
 
 			IEnumerable<string>? generatedCodes =
@@ -164,13 +163,26 @@ namespace PaladinHubV2.Server.Domain.Services.Accounts
 				generatedCodes?.ToArray() ?? Array.Empty<string>());
 		}
 
+        public async Task<bool> CheckPasswordAsync(User user, string password)
+        {
+            if (string.IsNullOrWhiteSpace(password) || await _userManager.IsLockedOutAsync(user)) return false;
+            if (!await _userManager.CheckPasswordAsync(user, password))
+            {
+                await _userManager.AccessFailedAsync(user);
+                return false;
+            }
+            await _userManager.ResetAccessFailedCountAsync(user);
+            return true;
+        }
+
 		public async Task DisableAsync(User user)
 		{
 			ArgumentNullException.ThrowIfNull(user);
 
 			if (user.TwoFactorEnabled)
 			{
-				await _security.ToggleTwoFactor(user, false);
+				AccountFactors.Ensure(await _userManager.SetAuthenticationTokenAsync(user, AccountFactors.Store, "Authenticator2FA", "false"));
+				await _security.ToggleTwoFactor(user, await AccountFactors.EmailAsync(_userManager, user));
 			}
 		}
 

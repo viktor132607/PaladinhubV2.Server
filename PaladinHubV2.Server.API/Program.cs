@@ -116,6 +116,7 @@ app.UseRouting();
 app.UseCors("PaladinHubClient");
 app.UseSession();
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseMiddleware<AdminPermissionEnforcementMiddleware>();
 app.UseAuthorization();
 app.Use(

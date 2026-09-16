@@ -143,7 +143,7 @@ namespace PaladinHubV2.Server.API.Controllers.Accounts
 
 		[HttpPost("Disable2FA")]
 		[ValidateAntiForgeryToken]
-		public async Task<IActionResult> Disable2FA()
+		public async Task<IActionResult> Disable2FA([FromForm] string password = "")
 		{
 			User? me = await Me();
 
@@ -154,6 +154,9 @@ namespace PaladinHubV2.Server.API.Controllers.Accounts
 					message = "Authentication required."
 				});
 			}
+
+			if (!await _twoFactor.CheckPasswordAsync(me, password))
+				return BadRequest(new { message = "Invalid password or account locked." });
 
 			await _twoFactor.DisableAsync(me);
 
@@ -166,7 +169,7 @@ namespace PaladinHubV2.Server.API.Controllers.Accounts
 				ok = true,
 				message =
 					"Two-factor authentication disabled.",
-				twoFactorEnabled = false,
+				twoFactorEnabled = me.TwoFactorEnabled,
 				requireTwoFactor = false
 			});
 		}

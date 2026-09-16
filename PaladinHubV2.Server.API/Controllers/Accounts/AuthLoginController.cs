@@ -28,6 +28,8 @@ public sealed class AuthLoginController : ControllerBase
 			request.Password,
 			request.RememberMe);
 
+		HttpContext?.Features.Get<Microsoft.AspNetCore.Http.Features.ISessionFeature>()?.Session?.Remove(SessionEmailTokenProvider.NonceKey);
+
 		return result.Error switch
 		{
 			AuthLoginError.None => Ok(result.Session),

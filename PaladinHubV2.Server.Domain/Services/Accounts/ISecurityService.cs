@@ -23,7 +23,7 @@ namespace PaladinHubV2.Server.Domain.Services.Accounts
 
 		public async Task ToggleTwoFactor(User me, bool enable)
 		{
-			await _um.SetTwoFactorEnabledAsync(me, enable);
+			AccountFactors.Ensure(await _um.SetTwoFactorEnabledAsync(me, enable));
 		}
 
 		public async Task<bool> GenerateRecoveryCodes(User me, int count)

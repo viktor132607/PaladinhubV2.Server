@@ -149,7 +149,7 @@ namespace PaladinHubV2.Server.Domain.Services.Accounts
 			IFormFile? file,
 			CancellationToken cancellationToken = default)
 		{
-			if (file == null || file.Length == 0)
+			if (file == null || file.Length == 0 || file.Length > 5 * 1024 * 1024)
 			{
 				return AccountAvatarResult.Fail(
 					AccountAvatarFailure.NoFile,
@@ -301,15 +301,6 @@ namespace PaladinHubV2.Server.Domain.Services.Accounts
 				}
 			}
 
-			if (!string.IsNullOrWhiteSpace(me.PhoneNumber))
-			{
-				score += 15;
-			}
-			else
-			{
-				tips.Add(
-					"Add a phone number as a recovery factor.");
-			}
 
 			if (me.TwoFactorEnabled)
 			{
@@ -322,7 +313,7 @@ namespace PaladinHubV2.Server.Domain.Services.Accounts
 
 			if (!string.IsNullOrWhiteSpace(me.PasswordHash))
 			{
-				score += 15;
+				score += 30;
 			}
 			else
 			{

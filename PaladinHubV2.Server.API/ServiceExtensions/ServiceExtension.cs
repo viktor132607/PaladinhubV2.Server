@@ -1,10 +1,13 @@
 using System;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Community.Microsoft.Extensions.Caching.PostgreSql;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using PaladinHubV2.Server.API.Configuration;
@@ -61,6 +64,18 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 					: CookieSecurePolicy.Always;
 
 			services.AddControllersWithViews();
+            services.AddRateLimiter(options =>
+            {
+                options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+                options.AddPolicy("account-security", context =>
+                    RateLimitPartition.GetFixedWindowLimiter(
+                        context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                            ?? context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
+                        _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = 10, Window = TimeSpan.FromMinutes(1), QueueLimit = 0
+                        }));
+            });
 			services.AddDbContext<AppDbContext>(
 				options => options.UseNpgsql(connectionString));
 
@@ -108,7 +123,23 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 						options.SignIn.RequireConfirmedPhoneNumber = false;
 					})
 				.AddEntityFrameworkStores<AppDbContext>()
-				.AddDefaultTokenProviders();
+				.AddDefaultTokenProviders()
+				.AddTokenProvider<SessionEmailTokenProvider>(TokenOptions.DefaultEmailProvider);
+
+			// Identity's temporary and remembered-device cookies must also cross
+			// the client/API origin boundary, just like the application cookie.
+			foreach (string scheme in new[] { IdentityConstants.TwoFactorUserIdScheme, IdentityConstants.TwoFactorRememberMeScheme })
+			{
+				services.Configure<CookieAuthenticationOptions>(scheme, options =>
+				{
+					options.Cookie.HttpOnly = true;
+					options.Cookie.IsEssential = true;
+					options.Cookie.SameSite = cookieSameSite;
+					options.Cookie.SecurePolicy = cookieSecurePolicy;
+				});
+			}
+
+			services.Configure<DataProtectionTokenProviderOptions>(options => options.TokenLifespan = TimeSpan.FromMinutes(30));
 
 			string clientBaseUrl =
 				(configuration["ClientApp:BaseUrl"] ?? "http://localhost:3000")
@@ -224,6 +255,7 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 			services.AddScoped<AuthSessionService>();
 			services.AddScoped<AuthRegistrationService>();
 			services.AddScoped<AuthLoginService>();
+			services.AddHttpClient<AccountEmailService>();
 			services.AddScoped<ISecurityService, SecurityService>();
 			services.AddScoped<AccountTwoFactorService>();
 			services.AddScoped<IAvatarService, AvatarService>();

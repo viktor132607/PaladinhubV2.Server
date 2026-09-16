@@ -26,7 +26,10 @@ public sealed class AuthMultiFactorController : ControllerBase
 		AuthLoginResult result = await _login.TwoFactorAsync(
 			request.Code,
 			request.RememberMe,
-			request.RememberMachine);
+			request.RememberMachine,
+			request.Provider);
+
+		if (result.Error == AuthLoginError.None) HttpContext.Session.Remove(SessionEmailTokenProvider.NonceKey);
 
 		return result.Error switch
 		{
@@ -54,6 +57,8 @@ public sealed class AuthMultiFactorController : ControllerBase
 	{
 		AuthLoginResult result =
 			await _login.RecoveryCodeAsync(request.RecoveryCode);
+
+		if (result.Error == AuthLoginError.None) HttpContext.Session.Remove(SessionEmailTokenProvider.NonceKey);
 
 		return result.Error switch
 		{

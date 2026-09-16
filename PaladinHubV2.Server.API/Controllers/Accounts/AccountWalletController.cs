@@ -104,11 +104,12 @@ namespace PaladinHubV2.Server.API.Controllers.Accounts
 		}
 
 		[HttpPost("DevTopUp")]
+		[Authorize(Roles = "Admin")]
 		[ValidateAntiForgeryToken]
 		public async Task<IActionResult> DevTopUp(
 			[FromForm] decimal amount)
 		{
-			if (amount <= 0m)
+			if (amount < 0.01m || amount > 1000m || decimal.Round(amount, 2) != amount)
 			{
 				return BadRequest(new
 				{

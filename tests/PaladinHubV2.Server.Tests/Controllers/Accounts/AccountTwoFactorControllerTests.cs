@@ -65,9 +65,7 @@ public sealed class AccountTwoFactorControllerTests
         Assert.Equal("ABCD 1234", ReadString(result.Value, "sharedKey"));
         Assert.StartsWith("otpauth://totp/PaladinHub:", ReadString(result.Value, "authenticatorUri"));
         Assert.Contains("secret=abcd1234", ReadString(result.Value, "authenticatorUri"));
-        Assert.StartsWith(
-            "https://api.qrserver.com/v1/create-qr-code/",
-            ReadString(result.Value, "qrCodeUrl"));
+        Assert.Null(ReadString(result.Value, "qrCodeUrl"));
     }
 
     [Fact]
@@ -201,10 +199,11 @@ public sealed class AccountTwoFactorControllerTests
     public async Task Disable2FA_WhenEnabled_DisablesAndClearsRequirementFlag()
     {
         var user = new User { Id = "user-1", TwoFactorEnabled = true };
-        var (controller, security, _, session) = CreateController(user);
-        security.Setup(service => service.ToggleTwoFactor(user, false)).Returns(Task.CompletedTask);
+        var (controller, security, users, session) = CreateController(user);
+        users.Setup(manager => manager.CheckPasswordAsync(user, "correct-password")).ReturnsAsync(true);
+        security.Setup(service => service.ToggleTwoFactor(user, false)).Callback(() => user.TwoFactorEnabled = false).Returns(Task.CompletedTask);
 
-        OkObjectResult result = Assert.IsType<OkObjectResult>(await controller.Disable2FA());
+        OkObjectResult result = Assert.IsType<OkObjectResult>(await controller.Disable2FA("correct-password"));
 
         Assert.True(ReadBoolean(result.Value, "ok"));
         Assert.False(ReadBoolean(result.Value, "twoFactorEnabled"));
@@ -255,6 +254,27 @@ public sealed class AccountTwoFactorControllerTests
             Assert.IsType<string[]>(Read(result.Value, "recoveryCodes")));
     }
 
+    [Fact]
+    public async Task Disable2FA_WithoutPassword_DoesNotDisableAuthenticator()
+    {
+        var user = new User { Id = "user-1", TwoFactorEnabled = true };
+        var (controller, security, _, _) = CreateController(user);
+        Assert.IsType<BadRequestObjectResult>(await controller.Disable2FA());
+        security.Verify(service => service.ToggleTwoFactor(It.IsAny<User>(), It.IsAny<bool>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Enable2FA_EmailOnlyAccount_CanPrepareAuthenticator()
+    {
+        var user = new User { Id = "user-1", TwoFactorEnabled = true, EmailConfirmed = true };
+        var (controller, _, users, _) = CreateController(user);
+        users.Setup(m => m.GetAuthenticationTokenAsync(user, AccountFactors.Store, "Authenticator2FA")).ReturnsAsync("false");
+        users.Setup(m => m.GetAuthenticatorKeyAsync(user)).ReturnsAsync("ABCD1234");
+        var result = Assert.IsType<OkObjectResult>(await controller.Enable2FA(false));
+        Assert.False(ReadBoolean(result.Value, "twoFactorEnabled"));
+        Assert.Equal("ABCD 1234", ReadString(result.Value, "sharedKey"));
+    }
+
     private static (
         AccountTwoFactorController Controller,
         Mock<ISecurityService> Security,
@@ -267,6 +287,7 @@ public sealed class AccountTwoFactorControllerTests
 
         var security = new Mock<ISecurityService>();
         var users = CreateUserManager();
+        users.Setup(manager => manager.SetAuthenticationTokenAsync(It.IsAny<User>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(IdentityResult.Success);
         var session = new TestSession();
         var twoFactor = new AccountTwoFactorService(security.Object, users.Object);
         var controller = new AccountTwoFactorController(ui.Object, twoFactor);

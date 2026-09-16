@@ -43,7 +43,7 @@ public sealed class AuthMultiFactorControllerTests
             "Enter a valid 6-digit authenticator code.",
             Assert.IsType<AuthErrorResponse>(response.Value).Message);
         fixture.SignIn.Verify(
-            x => x.TwoFactorAuthenticatorSignInAsync(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<bool>()),
+            x => x.TwoFactorSignInAsync("Authenticator", It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<bool>()),
             Times.Never);
     }
 
@@ -52,7 +52,7 @@ public sealed class AuthMultiFactorControllerTests
     {
         var user = CreateUser();
         var fixture = CreateFixture(user);
-        fixture.SignIn.Setup(x => x.TwoFactorAuthenticatorSignInAsync("123456", true, true))
+        fixture.SignIn.Setup(x => x.TwoFactorSignInAsync("Authenticator", "123456", true, true))
             .ReturnsAsync(SignInResult.Failed);
 
         IActionResult result = await fixture.Controller.LoginWithTwoFactor(new TwoFactorLoginRequest
@@ -64,7 +64,7 @@ public sealed class AuthMultiFactorControllerTests
 
         var response = Assert.IsType<UnauthorizedObjectResult>(result);
         Assert.Equal("Invalid authenticator code.", Assert.IsType<AuthErrorResponse>(response.Value).Message);
-        fixture.SignIn.Verify(x => x.TwoFactorAuthenticatorSignInAsync("123456", true, true), Times.Once);
+        fixture.SignIn.Verify(x => x.TwoFactorSignInAsync("Authenticator", "123456", true, true), Times.Once);
     }
 
     [Fact]
@@ -72,7 +72,7 @@ public sealed class AuthMultiFactorControllerTests
     {
         var user = CreateUser();
         var fixture = CreateFixture(user);
-        fixture.SignIn.Setup(x => x.TwoFactorAuthenticatorSignInAsync("123456", false, false))
+        fixture.SignIn.Setup(x => x.TwoFactorSignInAsync("Authenticator", "123456", false, false))
             .ReturnsAsync(SignInResult.LockedOut);
 
         IActionResult result = await fixture.Controller.LoginWithTwoFactor(new TwoFactorLoginRequest { Code = "123456" });
@@ -90,7 +90,7 @@ public sealed class AuthMultiFactorControllerTests
         var user = CreateUser();
         var fixture = CreateFixture(user);
         fixture.Users.Setup(x => x.GetRolesAsync(user)).ReturnsAsync(new List<string> { "User" });
-        fixture.SignIn.Setup(x => x.TwoFactorAuthenticatorSignInAsync("123456", false, true))
+        fixture.SignIn.Setup(x => x.TwoFactorSignInAsync("Authenticator", "123456", false, true))
             .ReturnsAsync(SignInResult.Success);
 
         IActionResult result = await fixture.Controller.LoginWithTwoFactor(new TwoFactorLoginRequest
@@ -181,6 +181,28 @@ public sealed class AuthMultiFactorControllerTests
         Assert.Contains("Admin", session.User!.Roles);
     }
 
+    [Fact]
+    public async Task TwoFactor_EmailNotEnabled_DoesNotAcceptEmailProvider()
+    {
+        var fixture = CreateFixture(CreateUser());
+        Assert.IsType<UnauthorizedObjectResult>(await fixture.Controller.LoginWithTwoFactor(
+            new TwoFactorLoginRequest { Code = "123456", Provider = "Email" }));
+        fixture.SignIn.Verify(x => x.TwoFactorSignInAsync("Email", It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<bool>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task TwoFactor_VerifiedEmailEnabled_UsesEmailProvider()
+    {
+        var user = CreateUser();
+        user.EmailConfirmed = true;
+        var fixture = CreateFixture(user);
+        fixture.Users.Setup(x => x.GetAuthenticationTokenAsync(user, AccountFactors.Store, "Email2FA")).ReturnsAsync("true");
+        fixture.SignIn.Setup(x => x.TwoFactorSignInAsync("Email", "123456", false, false)).ReturnsAsync(SignInResult.Failed);
+        Assert.IsType<UnauthorizedObjectResult>(await fixture.Controller.LoginWithTwoFactor(
+            new TwoFactorLoginRequest { Code = "123456", Provider = "Email" }));
+        fixture.SignIn.Verify(x => x.TwoFactorSignInAsync("Email", "123456", false, false), Times.Once);
+    }
+
     private static MultiFactorFixture CreateFixture(User? pendingUser = null)
     {
         Mock<UserManager<User>> users = ControllerTestSupport.CreateUserManager();
@@ -203,7 +225,9 @@ public sealed class AuthMultiFactorControllerTests
             users.Object,
             new AuthSessionService(users.Object));
 
-        return new MultiFactorFixture(new AuthMultiFactorController(loginService), users, signIn);
+        var controller = new AuthMultiFactorController(loginService);
+        ControllerTestSupport.Attach(controller, ControllerTestSupport.CreateHttpContext(session: new TestSession()));
+        return new MultiFactorFixture(controller, users, signIn);
     }
 
     private static User CreateUser() => new()
@@ -211,6 +235,7 @@ public sealed class AuthMultiFactorControllerTests
         Id = "user-1",
         UserName = "viktor",
         Email = "viktor@example.com",
+        TwoFactorEnabled = true,
         FullName = "Viktor Iliev"
     };
 

@@ -45,6 +45,9 @@ namespace PaladinHub.Models.Auth
 		public bool RememberMe { get; init; }
 
 		public bool RememberMachine { get; init; }
+
+		[RegularExpression("^(Authenticator|Email)$")]
+		public string Provider { get; init; } = "Authenticator";
 	}
 
 	public sealed class RecoveryCodeLoginRequest
