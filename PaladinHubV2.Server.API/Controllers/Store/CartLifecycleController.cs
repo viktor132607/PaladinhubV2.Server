@@ -16,12 +16,12 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 	{
 		private readonly UserManager<User> _userManager;
 		private readonly ICartSessionService _cartSession;
-		private readonly ICartStore _cartStore;
+		private readonly ICartStore? _cartStore;
 
 		public CartLifecycleController(
 			UserManager<User> userManager,
 			ICartSessionService cartSession,
-			ICartStore cartStore)
+			ICartStore? cartStore = null)
 		{
 			_userManager = userManager;
 			_cartSession = cartSession;
@@ -45,13 +45,21 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 					user,
 					cancellationToken);
 			}
-			else
+			else if (_cartStore != null)
 			{
 				await _cartStore.ClearAsync(
 					CheckoutGuestUserResolver.GetOwnerKey(
 						HttpContext,
 						User),
 					cancellationToken);
+			}
+			else
+			{
+				return Unauthorized(new
+				{
+					ok = false,
+					message = "Authentication required."
+				});
 			}
 
 			return Ok(new
