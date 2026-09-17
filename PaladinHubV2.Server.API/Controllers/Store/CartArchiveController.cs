@@ -20,7 +20,6 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 
 		[Authorize(Roles = "Admin")]
 		[HttpGet("archive")]
-		[HttpGet("Archive")]
 		[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 		public async Task<IActionResult> Archive()
 		{
@@ -61,7 +60,6 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 		}
 
 		[HttpPut("archive/{id:guid}/status")]
-		[HttpPut("Archive/{id:guid}/Status")]
 		public async Task<IActionResult> UpdateStatus(
 			[FromRoute] Guid id,
 			[FromBody] UpdateOrderStatusRequest request)
