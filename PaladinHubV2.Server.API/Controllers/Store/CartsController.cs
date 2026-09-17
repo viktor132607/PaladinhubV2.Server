@@ -45,29 +45,28 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 		[AllowAnonymous]
 		[HttpGet("my-cart")]
 		[HttpGet("MyCart")]
-		[ResponseCache(
-			NoStore = true,
-			Location = ResponseCacheLocation.None)]
+		[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 		public async Task<IActionResult> MyCart(
 			CancellationToken cancellationToken = default)
 		{
 			User? user = await CurrentCheckoutUserAsync();
 
+			if (user == null && (_cartStore == null || _db == null))
+			{
+				return Unauthorized(new { message = "Authentication required." });
+			}
+
 			MyCartViewModel model =
 				user == null
 					? await GetAnonymousCartAsync(cancellationToken)
-					: await _cartFlow.GetCartViewModelAsync(
-						user,
-						cancellationToken);
+					: await _cartFlow.GetCartViewModelAsync(user, cancellationToken);
 
 			return Ok(model);
 		}
 
 		[AllowAnonymous]
 		[HttpGet("Mini")]
-		[ResponseCache(
-			NoStore = true,
-			Location = ResponseCacheLocation.None)]
+		[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 		public async Task<IActionResult> Mini(
 			CancellationToken cancellationToken = default)
 		{
@@ -83,9 +82,7 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 
 		[AllowAnonymous]
 		[HttpGet("CountJson")]
-		[ResponseCache(
-			NoStore = true,
-			Location = ResponseCacheLocation.None)]
+		[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 		public async Task<IActionResult> CountJson(
 			CancellationToken cancellationToken)
 		{
@@ -149,9 +146,7 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 			{
 				string productId = line.ProductId.ToString();
 
-				if (!productsById.TryGetValue(
-						productId,
-						out Product? product))
+				if (!productsById.TryGetValue(productId, out Product? product))
 				{
 					continue;
 				}
