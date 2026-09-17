@@ -12,6 +12,15 @@ UPDATE "Carts"
 SET "Status" = 'Pending'
 WHERE "Status" IS NULL OR btrim("Status") = '';
 
+-- A customer may have any number of archived orders, but only one active cart.
+-- Older schemas used a globally unique UserId index, which prevented a new
+-- active cart from being created after archiving the previous order.
+DROP INDEX IF EXISTS "IX_Carts_UserId";
+
+CREATE UNIQUE INDEX IF NOT EXISTS "IX_Carts_Active_UserId"
+    ON "Carts" ("UserId")
+    WHERE "IsArchived" = false;
+
 CREATE TABLE IF NOT EXISTS "RoleSecurityProfiles" (
     "RoleId" text PRIMARY KEY,
     "IsSystem" boolean NOT NULL DEFAULT false,
