@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Identity;
 using PaladinHubV2.Server.Data.Entities;
 using PaladinHubV2.Server.Domain.Services;
@@ -16,25 +17,27 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 			ClaimsPrincipal principal)
 		{
 			string? authenticatedUserId =
-				principal.FindFirstValue(
-					ClaimTypes.NameIdentifier);
+				principal.FindFirstValue(ClaimTypes.NameIdentifier);
 
-			if (!string.IsNullOrWhiteSpace(
-					authenticatedUserId))
+			if (!string.IsNullOrWhiteSpace(authenticatedUserId))
 			{
 				return authenticatedUserId;
 			}
 
-			string? guestUserId =
-				httpContext.Session.GetString(
-					GuestUserSessionKey);
+			ISession? session = GetSession(httpContext);
+			string? guestUserId = session?.GetString(GuestUserSessionKey);
 
 			if (!string.IsNullOrWhiteSpace(guestUserId))
 			{
 				return guestUserId;
 			}
 
-			return $"anon:{httpContext.Session.Id}";
+			string anonymousId =
+				!string.IsNullOrWhiteSpace(session?.Id)
+					? session.Id
+					: httpContext.TraceIdentifier;
+
+			return $"anon:{anonymousId}";
 		}
 
 		internal static async Task<User?> ResolveExistingAsync(
@@ -50,9 +53,8 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 				return authenticatedUser;
 			}
 
-			string? guestUserId =
-				httpContext.Session.GetString(
-					GuestUserSessionKey);
+			ISession? session = GetSession(httpContext);
+			string? guestUserId = session?.GetString(GuestUserSessionKey);
 
 			if (string.IsNullOrWhiteSpace(guestUserId))
 			{
@@ -70,19 +72,25 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 			ICheckoutSessionService checkoutSession,
 			CancellationToken cancellationToken)
 		{
-			User? existing =
-				await ResolveExistingAsync(
-					httpContext,
-					principal,
-					userManager);
+			User? existing = await ResolveExistingAsync(
+				httpContext,
+				principal,
+				userManager);
 
 			if (existing != null)
 			{
 				return existing;
 			}
 
+			ISession? session = GetSession(httpContext);
+			if (session == null)
+			{
+				throw new InvalidOperationException(
+					"Guest checkout session is unavailable.");
+			}
+
 			var state = checkoutSession.GetState();
-			if (state.Shipping == null)
+			if (state?.Shipping == null)
 			{
 				throw new InvalidOperationException(
 					"Shipping details are required before guest checkout can continue.");
@@ -93,15 +101,13 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 			{
 				Id = Guid.NewGuid().ToString(),
 				UserName = $"guest_{guestToken}",
-				FullName = string.IsNullOrWhiteSpace(
-						state.Shipping.FullName)
+				FullName = string.IsNullOrWhiteSpace(state.Shipping.FullName)
 					? "Guest"
 					: state.Shipping.FullName.Trim(),
 				PhoneNumber = state.Shipping.Phone?.Trim()
 			};
 
-			IdentityResult createResult =
-				await userManager.CreateAsync(guestUser);
+			IdentityResult createResult = await userManager.CreateAsync(guestUser);
 
 			if (!createResult.Succeeded)
 			{
@@ -115,13 +121,10 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 						: error);
 			}
 
-			string anonymousOwnerKey =
-				$"anon:{httpContext.Session.Id}";
-
-			var anonymousLines =
-				await cartStore.GetAsync(
-					anonymousOwnerKey,
-					cancellationToken);
+			string anonymousOwnerKey = $"anon:{session.Id}";
+			var anonymousLines = await cartStore.GetAsync(
+				anonymousOwnerKey,
+				cancellationToken);
 
 			foreach (var line in anonymousLines)
 			{
@@ -141,11 +144,13 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 				anonymousOwnerKey,
 				cancellationToken);
 
-			httpContext.Session.SetString(
-				GuestUserSessionKey,
-				guestUser.Id);
-
+			session.SetString(GuestUserSessionKey, guestUser.Id);
 			return guestUser;
+		}
+
+		private static ISession? GetSession(HttpContext httpContext)
+		{
+			return httpContext.Features.Get<ISessionFeature>()?.Session;
 		}
 	}
 }
