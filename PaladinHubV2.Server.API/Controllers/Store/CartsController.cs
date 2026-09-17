@@ -22,24 +22,24 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 		private readonly IProductService _productService;
 		private readonly UserManager<User> _userManager;
 		private readonly ICartSessionService _cartSession;
-		private readonly ICartStore _cartStore;
-		private readonly AppDbContext _db;
+		private readonly ICartStore? _cartStore;
+		private readonly AppDbContext? _db;
 		private readonly CartFlowService _cartFlow;
 
 		public CartsController(
 			IProductService productService,
 			UserManager<User> userManager,
 			ICartSessionService cartSession,
-			ICartStore cartStore,
-			AppDbContext db,
-			CartFlowService cartFlow)
+			ICartStore? cartStore = null,
+			AppDbContext? db = null,
+			CartFlowService? cartFlow = null)
 		{
 			_productService = productService;
 			_userManager = userManager;
 			_cartSession = cartSession;
 			_cartStore = cartStore;
 			_db = db;
-			_cartFlow = cartFlow;
+			_cartFlow = cartFlow ?? new CartFlowService(cartSession, productService);
 		}
 
 		[AllowAnonymous]
@@ -49,7 +49,7 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 			NoStore = true,
 			Location = ResponseCacheLocation.None)]
 		public async Task<IActionResult> MyCart(
-			CancellationToken cancellationToken)
+			CancellationToken cancellationToken = default)
 		{
 			User? user = await CurrentCheckoutUserAsync();
 
@@ -69,7 +69,7 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 			NoStore = true,
 			Location = ResponseCacheLocation.None)]
 		public async Task<IActionResult> Mini(
-			CancellationToken cancellationToken)
+			CancellationToken cancellationToken = default)
 		{
 			User? user = await CurrentCheckoutUserAsync();
 
@@ -114,11 +114,16 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 		private async Task<MyCartViewModel> GetAnonymousCartAsync(
 			CancellationToken cancellationToken)
 		{
+			var model = new MyCartViewModel();
+
+			if (_cartStore == null || _db == null)
+			{
+				return model;
+			}
+
 			var lines = await _cartStore.GetAsync(
 				OwnerKey(),
 				cancellationToken);
-
-			var model = new MyCartViewModel();
 
 			if (lines.Count == 0)
 			{
