@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using PaladinHubV2.Server.Data.Entities;
+using PaladinHubV2.Server.Domain.Services;
 using PaladinHubV2.Server.Domain.Services.Carts;
 
 namespace PaladinHubV2.Server.API.Controllers.Store
@@ -15,33 +16,43 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 	{
 		private readonly UserManager<User> _userManager;
 		private readonly ICartSessionService _cartSession;
+		private readonly ICartStore _cartStore;
 
 		public CartLifecycleController(
 			UserManager<User> userManager,
-			ICartSessionService cartSession)
+			ICartSessionService cartSession,
+			ICartStore cartStore)
 		{
 			_userManager = userManager;
 			_cartSession = cartSession;
+			_cartStore = cartStore;
 		}
 
+		[AllowAnonymous]
 		[HttpPost("Cancel")]
 		public async Task<IActionResult> Cancel(
 			CancellationToken cancellationToken)
 		{
-			User? user = await _userManager.GetUserAsync(User);
+			User? user =
+				await CheckoutGuestUserResolver.ResolveExistingAsync(
+					HttpContext,
+					User,
+					_userManager);
 
-			if (user == null)
+			if (user != null)
 			{
-				return Unauthorized(new
-				{
-					ok = false,
-					message = "Authentication required."
-				});
+				await _cartSession.CleanAndClear(
+					user,
+					cancellationToken);
 			}
-
-			await _cartSession.CleanAndClear(
-				user,
-				cancellationToken);
+			else
+			{
+				await _cartStore.ClearAsync(
+					CheckoutGuestUserResolver.GetOwnerKey(
+						HttpContext,
+						User),
+					cancellationToken);
+			}
 
 			return Ok(new
 			{
