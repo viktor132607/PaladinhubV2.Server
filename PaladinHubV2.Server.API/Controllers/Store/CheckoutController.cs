@@ -20,15 +20,15 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 		private readonly UserManager<User> _userManager;
 		private readonly ICheckoutSessionService _checkoutSession;
 		private readonly ICheckoutOrderService _checkoutOrders;
-		private readonly ICartStore _cartStore;
+		private readonly ICartStore? _cartStore;
 		private readonly string _clientBaseUrl;
 
 		public CheckoutController(
 			UserManager<User> userManager,
 			ICheckoutSessionService checkoutSession,
 			ICheckoutOrderService checkoutOrders,
-			ICartStore cartStore,
-			IConfiguration configuration)
+			IConfiguration configuration,
+			ICartStore? cartStore = null)
 		{
 			_userManager = userManager;
 			_checkoutSession = checkoutSession;
@@ -46,44 +46,31 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 		[HttpGet("Start")]
 		public IActionResult Start()
 		{
-			const string redirectPath =
-				"/Checkout/Shipping";
+			const string redirectPath = "/Checkout/Shipping";
 
-			bool acceptsJson =
-				Request.Headers.Accept.ToString().Contains(
-					"application/json",
-					StringComparison.OrdinalIgnoreCase);
+			bool acceptsJson = Request.Headers.Accept.ToString().Contains(
+				"application/json",
+				StringComparison.OrdinalIgnoreCase);
 
 			if (acceptsJson)
 			{
-				return Ok(new
-				{
-					redirect = redirectPath
-				});
+				return Ok(new { redirect = redirectPath });
 			}
 
-			return Redirect(
-				$"{_clientBaseUrl}{redirectPath}");
+			return Redirect($"{_clientBaseUrl}{redirectPath}");
 		}
 
 		[HttpGet("Shipping")]
-		[ResponseCache(
-			NoStore = true,
-			Location = ResponseCacheLocation.None)]
+		[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 		public IActionResult Shipping()
 		{
-			CheckoutState state =
-				_checkoutSession.GetState();
-
-			return Ok(
-				state.Shipping ??
-				new ShippingInfoVM());
+			CheckoutState state = _checkoutSession.GetState();
+			return Ok(state.Shipping ?? new ShippingInfoVM());
 		}
 
 		[HttpPost("Shipping")]
 		[ValidateAntiForgeryToken]
-		public IActionResult Shipping(
-			[FromBody] ShippingInfoVM model)
+		public IActionResult Shipping([FromBody] ShippingInfoVM model)
 		{
 			if (!ModelState.IsValid)
 			{
@@ -91,12 +78,8 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 			}
 
 			_checkoutSession.NormalizeShipping(model);
-
-			CheckoutState state =
-				_checkoutSession.GetState();
-
+			CheckoutState state = _checkoutSession.GetState();
 			state.Shipping = model;
-
 			_checkoutSession.SaveState(state);
 
 			return Ok(new
@@ -108,53 +91,38 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 		}
 
 		[HttpGet("Payment")]
-		[ResponseCache(
-			NoStore = true,
-			Location = ResponseCacheLocation.None)]
+		[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 		public IActionResult Payment()
 		{
-			CheckoutState state =
-				_checkoutSession.GetState();
+			CheckoutState state = _checkoutSession.GetState();
 
 			if (state.Shipping == null)
 			{
 				return Conflict(new
 				{
-					message =
-						"Shipping details are required.",
-
-					redirect =
-						"/Checkout/Shipping"
+					message = "Shipping details are required.",
+					redirect = "/Checkout/Shipping"
 				});
 			}
 
 			return Ok(new PaymentVM
 			{
-				Method =
-					state.PaymentMethod ??
-					CheckoutPaymentMethod.Card
+				Method = state.PaymentMethod ?? CheckoutPaymentMethod.Card
 			});
 		}
 
 		[HttpPost("Payment")]
 		[ValidateAntiForgeryToken]
-		public IActionResult Payment(
-			[FromBody] PaymentVM model)
+		public IActionResult Payment([FromBody] PaymentVM model)
 		{
 			if (!ModelState.IsValid)
 			{
 				return ValidationProblem(ModelState);
 			}
 
-			if (!Enum.IsDefined(
-					typeof(CheckoutPaymentMethod),
-					model.Method))
+			if (!Enum.IsDefined(typeof(CheckoutPaymentMethod), model.Method))
 			{
-				return BadRequest(new
-				{
-					message =
-						"Invalid payment method."
-				});
+				return BadRequest(new { message = "Invalid payment method." });
 			}
 
 			if (User.Identity?.IsAuthenticated != true &&
@@ -162,28 +130,22 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 			{
 				return BadRequest(new
 				{
-					message =
-						"Balance payment requires a signed-in account."
+					message = "Balance payment requires a signed-in account."
 				});
 			}
 
-			CheckoutState state =
-				_checkoutSession.GetState();
+			CheckoutState state = _checkoutSession.GetState();
 
 			if (state.Shipping == null)
 			{
 				return Conflict(new
 				{
-					message =
-						"Shipping details are required.",
-
-					redirect =
-						"/Checkout/Shipping"
+					message = "Shipping details are required.",
+					redirect = "/Checkout/Shipping"
 				});
 			}
 
 			state.PaymentMethod = model.Method;
-
 			_checkoutSession.SaveState(state);
 
 			return Ok(new
@@ -195,67 +157,62 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 		}
 
 		[HttpGet("Review")]
-		[ResponseCache(
-			NoStore = true,
-			Location = ResponseCacheLocation.None)]
+		[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 		public async Task<IActionResult> Review(
 			CancellationToken cancellationToken)
 		{
-			CheckoutState state =
-				_checkoutSession.GetState();
+			CheckoutState state = _checkoutSession.GetState();
 
-			if (state.Shipping == null ||
-				state.PaymentMethod == null)
+			if (state.Shipping == null || state.PaymentMethod == null)
 			{
 				return Conflict(new
 				{
-					message =
-						"Shipping details or payment method are missing.",
-
-					redirect =
-						"/Checkout/Shipping"
-				});
-			}
-
-			User user;
-			try
-			{
-				user = await CheckoutGuestUserResolver.ResolveOrCreateAsync(
-					HttpContext,
-					User,
-					_userManager,
-					_cartStore,
-					_checkoutSession,
-					cancellationToken);
-			}
-			catch (InvalidOperationException error)
-			{
-				return BadRequest(new
-				{
-					message = error.Message,
+					message = "Shipping details or payment method are missing.",
 					redirect = "/Checkout/Shipping"
 				});
 			}
 
+			User? user = await _userManager.GetUserAsync(User);
+
+			if (user == null)
+			{
+				if (_cartStore == null)
+				{
+					return Unauthorized(new { message = "Authentication required." });
+				}
+
+				try
+				{
+					user = await CheckoutGuestUserResolver.ResolveOrCreateAsync(
+						HttpContext,
+						User,
+						_userManager,
+						_cartStore,
+						_checkoutSession,
+						cancellationToken);
+				}
+				catch (InvalidOperationException error)
+				{
+					return BadRequest(new
+					{
+						message = error.Message,
+						redirect = "/Checkout/Shipping"
+					});
+				}
+			}
+
 			CheckoutCartSnapshot snapshot =
-				await _checkoutOrders.GetCartSnapshotAsync(
-					user,
-					cancellationToken);
+				await _checkoutOrders.GetCartSnapshotAsync(user, cancellationToken);
 
 			state.Total = snapshot.Total;
-
 			_checkoutSession.SaveState(state);
 
-			if (state.Total <= 0m ||
-				snapshot.Items <= 0)
+			if (state.Total <= 0m || snapshot.Items <= 0)
 			{
 				return BadRequest(new
 				{
-					message =
-						"Your cart is empty.",
-
-					redirect =
-						"/Cart/MyCart"
+					message = "Your cart is empty.",
+					redirect = "/Cart/MyCart"
 				});
 			}
 
