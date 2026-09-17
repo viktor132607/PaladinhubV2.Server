@@ -3,6 +3,15 @@
 -- AspNetUsers/AspNetRoles/AspNetUserRoles and existing assignments are not
 -- rewritten. Run it after the identity/user seeder so the Admin role exists.
 
+-- Order lifecycle upgrade. Keep this idempotent because database initialization
+-- can run repeatedly against an existing PostgreSQL database.
+ALTER TABLE "Carts"
+    ADD COLUMN IF NOT EXISTS "Status" character varying(32) NOT NULL DEFAULT 'Pending';
+
+UPDATE "Carts"
+SET "Status" = 'Pending'
+WHERE "Status" IS NULL OR btrim("Status") = '';
+
 CREATE TABLE IF NOT EXISTS "RoleSecurityProfiles" (
     "RoleId" text PRIMARY KEY,
     "IsSystem" boolean NOT NULL DEFAULT false,
