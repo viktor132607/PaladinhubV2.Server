@@ -36,10 +36,7 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 			_cartStore = cartStore;
 
 			_clientBaseUrl =
-				(
-					configuration["ClientApp:BaseUrl"] ??
-					"http://localhost:3000"
-				)
+				(configuration["ClientApp:BaseUrl"] ?? "http://localhost:3000")
 				.TrimEnd('/');
 		}
 
@@ -47,17 +44,13 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 		public IActionResult Start()
 		{
 			const string redirectPath = "/Checkout/Shipping";
-
 			bool acceptsJson = Request.Headers.Accept.ToString().Contains(
 				"application/json",
 				StringComparison.OrdinalIgnoreCase);
 
-			if (acceptsJson)
-			{
-				return Ok(new { redirect = redirectPath });
-			}
-
-			return Redirect($"{_clientBaseUrl}{redirectPath}");
+			return acceptsJson
+				? Ok(new { redirect = redirectPath })
+				: Redirect($"{_clientBaseUrl}{redirectPath}");
 		}
 
 		[HttpGet("Shipping")]
@@ -125,15 +118,6 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 				return BadRequest(new { message = "Invalid payment method." });
 			}
 
-			if (User.Identity?.IsAuthenticated != true &&
-				model.Method == CheckoutPaymentMethod.Balance)
-			{
-				return BadRequest(new
-				{
-					message = "Balance payment requires a signed-in account."
-				});
-			}
-
 			CheckoutState state = _checkoutSession.GetState();
 
 			if (state.Shipping == null)
@@ -142,6 +126,15 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 				{
 					message = "Shipping details are required.",
 					redirect = "/Checkout/Shipping"
+				});
+			}
+
+			if (User.Identity?.IsAuthenticated != true &&
+				model.Method == CheckoutPaymentMethod.Balance)
+			{
+				return BadRequest(new
+				{
+					message = "Balance payment requires a signed-in account."
 				});
 			}
 
@@ -161,9 +154,16 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 		public async Task<IActionResult> Review(
 			CancellationToken cancellationToken)
 		{
+			User? user = await _userManager.GetUserAsync(User);
+
+			if (user == null && _cartStore == null)
+			{
+				return Unauthorized(new { message = "Authentication required." });
+			}
+
 			CheckoutState state = _checkoutSession.GetState();
 
-			if (state.Shipping == null || state.PaymentMethod == null)
+			if (state?.Shipping == null || state.PaymentMethod == null)
 			{
 				return Conflict(new
 				{
@@ -172,22 +172,15 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 				});
 			}
 
-			User? user = await _userManager.GetUserAsync(User);
-
 			if (user == null)
 			{
-				if (_cartStore == null)
-				{
-					return Unauthorized(new { message = "Authentication required." });
-				}
-
 				try
 				{
 					user = await CheckoutGuestUserResolver.ResolveOrCreateAsync(
 						HttpContext,
 						User,
 						_userManager,
-						_cartStore,
+						_cartStore!,
 						_checkoutSession,
 						cancellationToken);
 				}
