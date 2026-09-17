@@ -38,9 +38,18 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 		public async Task<IActionResult> PlaceOrder(
 			CancellationToken cancellationToken)
 		{
+			User? user = await _userManager.GetUserAsync(User);
+
+			// Legacy/unit callers do not provide the guest cart store. Keep their
+			// authenticated-only contract while production DI supplies guest support.
+			if (user == null && _cartStore == null)
+			{
+				return Unauthorized(new { message = "Authentication required." });
+			}
+
 			CheckoutState state = _checkoutSession.GetState();
 
-			if (state.Shipping == null || state.PaymentMethod == null)
+			if (state?.Shipping == null || state.PaymentMethod == null)
 			{
 				return BadRequest(new
 				{
@@ -49,8 +58,9 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 				});
 			}
 
-			if (User.Identity?.IsAuthenticated != true &&
-				state.PaymentMethod == CheckoutPaymentMethod.Balance)
+			// Balance belongs to a real signed-in account. A synthetic guest checkout
+			// user must never be allowed to spend wallet funds.
+			if (user == null && state.PaymentMethod == CheckoutPaymentMethod.Balance)
 			{
 				return BadRequest(new
 				{
@@ -59,22 +69,15 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 				});
 			}
 
-			User? user = await _userManager.GetUserAsync(User);
-
 			if (user == null)
 			{
-				if (_cartStore == null)
-				{
-					return Unauthorized(new { message = "Authentication required." });
-				}
-
 				try
 				{
 					user = await CheckoutGuestUserResolver.ResolveOrCreateAsync(
 						HttpContext,
 						User,
 						_userManager,
-						_cartStore,
+						_cartStore!,
 						_checkoutSession,
 						cancellationToken);
 				}
