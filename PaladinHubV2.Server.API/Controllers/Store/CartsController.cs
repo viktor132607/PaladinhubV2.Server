@@ -1,9 +1,12 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using PaladinHub.Models.Carts;
+using PaladinHub.Models.Products;
+using PaladinHubV2.Server.Data;
 using PaladinHubV2.Server.Data.Entities;
+using PaladinHubV2.Server.Domain.Services;
 using PaladinHubV2.Server.Domain.Services.Carts;
 using PaladinHubV2.Server.Domain.Services.Products;
 
@@ -19,21 +22,27 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 		private readonly IProductService _productService;
 		private readonly UserManager<User> _userManager;
 		private readonly ICartSessionService _cartSession;
+		private readonly ICartStore _cartStore;
+		private readonly AppDbContext _db;
 		private readonly CartFlowService _cartFlow;
 
 		public CartsController(
 			IProductService productService,
 			UserManager<User> userManager,
-			ICartSessionService cartSession)
+			ICartSessionService cartSession,
+			ICartStore cartStore,
+			AppDbContext db,
+			CartFlowService cartFlow)
 		{
 			_productService = productService;
 			_userManager = userManager;
 			_cartSession = cartSession;
-			_cartFlow = new CartFlowService(
-				cartSession,
-				productService);
+			_cartStore = cartStore;
+			_db = db;
+			_cartFlow = cartFlow;
 		}
 
+		[AllowAnonymous]
 		[HttpGet("my-cart")]
 		[HttpGet("MyCart")]
 		[ResponseCache(
@@ -42,20 +51,14 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 		public async Task<IActionResult> MyCart(
 			CancellationToken cancellationToken)
 		{
-			User? user = await CurrentUserAsync();
-
-			if (user == null)
-			{
-				return Unauthorized(new
-				{
-					message = "Authentication required."
-				});
-			}
+			User? user = await CurrentCheckoutUserAsync();
 
 			MyCartViewModel model =
-				await _cartFlow.GetCartViewModelAsync(
-					user,
-					cancellationToken);
+				user == null
+					? await GetAnonymousCartAsync(cancellationToken)
+					: await _cartFlow.GetCartViewModelAsync(
+						user,
+						cancellationToken);
 
 			return Ok(model);
 		}
@@ -65,20 +68,15 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 		[ResponseCache(
 			NoStore = true,
 			Location = ResponseCacheLocation.None)]
-		public async Task<IActionResult> Mini()
+		public async Task<IActionResult> Mini(
+			CancellationToken cancellationToken)
 		{
-			User? user = await CurrentUserAsync();
-
-			if (user == null)
-			{
-				return Ok(new MyCartViewModel
-				{
-					TotalPrice = 0m
-				});
-			}
+			User? user = await CurrentCheckoutUserAsync();
 
 			MyCartViewModel model =
-				await _productService.GetMyProducts(user);
+				user == null
+					? await GetAnonymousCartAsync(cancellationToken)
+					: await _productService.GetMyProducts(user);
 
 			return Ok(model);
 		}
@@ -98,21 +96,86 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 			return Ok(count);
 		}
 
-		private string? CurrentUserId()
+		private Task<User?> CurrentCheckoutUserAsync()
 		{
-			return User.FindFirstValue(
-				ClaimTypes.NameIdentifier);
-		}
-
-		private Task<User?> CurrentUserAsync()
-		{
-			return _userManager.GetUserAsync(User);
+			return CheckoutGuestUserResolver.ResolveExistingAsync(
+				HttpContext,
+				User,
+				_userManager);
 		}
 
 		private string OwnerKey()
 		{
-			return CurrentUserId() ??
-				$"anon:{HttpContext.Session.Id}";
+			return CheckoutGuestUserResolver.GetOwnerKey(
+				HttpContext,
+				User);
+		}
+
+		private async Task<MyCartViewModel> GetAnonymousCartAsync(
+			CancellationToken cancellationToken)
+		{
+			var lines = await _cartStore.GetAsync(
+				OwnerKey(),
+				cancellationToken);
+
+			var model = new MyCartViewModel();
+
+			if (lines.Count == 0)
+			{
+				return model;
+			}
+
+			string[] productIds = lines
+				.Select(line => line.ProductId.ToString())
+				.ToArray();
+
+			var products = await _db.Products
+				.AsNoTracking()
+				.Include(product => product.ThumbnailImage)
+				.Include(product => product.Images)
+				.Where(product => productIds.Contains(product.Id))
+				.ToListAsync(cancellationToken);
+
+			var productsById = products.ToDictionary(
+				product => product.Id,
+				StringComparer.OrdinalIgnoreCase);
+
+			foreach (var line in lines)
+			{
+				string productId = line.ProductId.ToString();
+
+				if (!productsById.TryGetValue(
+						productId,
+						out Product? product))
+				{
+					continue;
+				}
+
+				string imageUrl =
+					product.ThumbnailImage?.Url ??
+					product.Images
+						.OrderBy(image => image.SortOrder)
+						.Select(image => image.Url)
+						.FirstOrDefault() ??
+					string.Empty;
+
+				model.MyProducts.Add(new ProductViewModel
+				{
+					Id = product.Id,
+					Name = product.Name,
+					Price = product.Price,
+					ImageUrl = imageUrl,
+					Quantity = line.Quantity,
+					CartId = Guid.Empty,
+					Cart = null!,
+					Category = product.Category,
+					Description = product.Description
+				});
+
+				model.TotalPrice += product.Price * line.Quantity;
+			}
+
+			return model;
 		}
 	}
 }
