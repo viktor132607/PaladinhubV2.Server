@@ -11,6 +11,9 @@ namespace PaladinHubV2.Server.Data.Entities
 
 		public string? OrderDate { get; set; }
 
+		[Required, MaxLength(32)]
+		public string Status { get; set; } = "Pending";
+
 		[Required]
 		public string UserId { get; set; } = default!;
 
