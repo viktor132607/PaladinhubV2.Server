@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using PaladinHubV2.Server.Data;
 using PaladinHubV2.Server.Data.Entities;
@@ -24,13 +24,14 @@ namespace PaladinHubV2.Server.Domain.Services.Carts
 
 		private async Task<Cart> GetOrCreateCartAsync(string userId)
 		{
-			var cart = await context.Carts.FirstOrDefaultAsync(x => x.UserId == userId);
+			var cart = await context.Carts.FirstOrDefaultAsync(x => x.UserId == userId && !x.IsArchived);
 			if (cart == null)
 			{
 				cart = new Cart
 				{
 					Id = Guid.NewGuid(),
 					UserId = userId,
+					Status = OrderStatusCatalog.Pending,
 					UpdatedOn = DateTime.UtcNow
 				};
 				await context.Carts.AddAsync(cart);
@@ -76,17 +77,19 @@ namespace PaladinHubV2.Server.Domain.Services.Carts
 		{
 			if (user is null) return;
 
-			var cart = await context.Carts.FirstOrDefaultAsync(x => x.UserId == user.Id);
+			var cart = await context.Carts.FirstOrDefaultAsync(x => x.UserId == user.Id && !x.IsArchived);
 			if (cart is null) return;
 
 			cart.IsArchived = true;
 			cart.OrderDate = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss");
+			cart.Status = OrderStatusCatalog.Pending;
 			cart.UpdatedOn = DateTime.UtcNow;
 
 			var newCart = new Cart
 			{
 				Id = Guid.NewGuid(),
 				UserId = user.Id,
+				Status = OrderStatusCatalog.Pending,
 				UpdatedOn = DateTime.UtcNow
 			};
 
@@ -98,7 +101,7 @@ namespace PaladinHubV2.Server.Domain.Services.Carts
 		{
 			if (user is null) return;
 
-			var cart = await context.Carts.FirstOrDefaultAsync(c => c.UserId == user.Id);
+			var cart = await context.Carts.FirstOrDefaultAsync(c => c.UserId == user.Id && !c.IsArchived);
 			if (cart is null) return;
 
 			var products = await context.CartProducts
@@ -118,7 +121,7 @@ namespace PaladinHubV2.Server.Domain.Services.Carts
 			var user = await context.Users.FirstOrDefaultAsync(x => x.Id == userId);
 			if (user is null) return false;
 
-			var cart = await context.Carts.FirstOrDefaultAsync(x => x.UserId == user.Id);
+			var cart = await context.Carts.FirstOrDefaultAsync(x => x.UserId == user.Id && !x.IsArchived);
 			if (cart is null) return false;
 
 			var cartProduct = await context.CartProducts
@@ -138,7 +141,7 @@ namespace PaladinHubV2.Server.Domain.Services.Carts
 			var user = await context.Users.FirstOrDefaultAsync(x => x.Id == userId);
 			if (user is null) return false;
 
-			var cart = await context.Carts.FirstOrDefaultAsync(x => x.UserId == user.Id);
+			var cart = await context.Carts.FirstOrDefaultAsync(x => x.UserId == user.Id && !x.IsArchived);
 			if (cart is null) return false;
 
 			var cartProduct = await context.CartProducts
@@ -165,7 +168,7 @@ namespace PaladinHubV2.Server.Domain.Services.Carts
 			var user = await context.Users.FirstOrDefaultAsync(x => x.Id == userId);
 			if (user is null) return false;
 
-			var cart = await context.Carts.FirstOrDefaultAsync(x => x.UserId == user.Id);
+			var cart = await context.Carts.FirstOrDefaultAsync(x => x.UserId == user.Id && !x.IsArchived);
 			if (cart is null) return false;
 
 			var cartProduct = await context.CartProducts
@@ -201,6 +204,69 @@ namespace PaladinHubV2.Server.Domain.Services.Carts
 				.ToListAsync();
 
 			return archive;
+		}
+
+		public async Task<IReadOnlyCollection<ArchivedOrderSummary>> GetArchivedOrders()
+		{
+			return await context.Carts
+				.AsNoTracking()
+				.Where(cart => cart.IsArchived)
+				.OrderByDescending(cart => cart.OrderDate)
+				.Select(cart => new ArchivedOrderSummary(
+					cart.Id,
+					cart.User.UserName ?? "Unknown",
+					cart.OrderDate ?? string.Empty,
+					string.IsNullOrWhiteSpace(cart.Status) ? OrderStatusCatalog.Pending : cart.Status))
+				.ToListAsync();
+		}
+
+		public async Task<ArchivedOrderDetails?> GetArchivedOrder(Guid cartId)
+		{
+			var cart = await context.Carts
+				.AsNoTracking()
+				.Include(x => x.User)
+				.Include(x => x.CartProducts)
+					.ThenInclude(cp => cp.Product)
+						.ThenInclude(product => product!.ThumbnailImage)
+				.FirstOrDefaultAsync(x => x.Id == cartId && x.IsArchived);
+
+			if (cart is null)
+				return null;
+
+			var items = cart.CartProducts
+				.Where(cp => cp.Product is not null)
+				.Select(cp => new ArchivedOrderItem(
+					cp.ProductId,
+					cp.Product!.Name,
+					cp.Quantity,
+					cp.Product.Price,
+					cp.Product.ThumbnailImage?.Url ?? string.Empty))
+				.ToArray();
+
+			return new ArchivedOrderDetails(
+				cart.Id,
+				cart.User?.UserName ?? "Unknown",
+				cart.OrderDate ?? string.Empty,
+				string.IsNullOrWhiteSpace(cart.Status) ? OrderStatusCatalog.Pending : cart.Status,
+				items,
+				items.Sum(item => item.Price * item.Quantity));
+		}
+
+		public async Task<bool> UpdateOrderStatus(Guid cartId, string status)
+		{
+			if (!OrderStatusCatalog.TryNormalize(status, out string normalizedStatus))
+				return false;
+
+			var cart = await context.Carts
+				.FirstOrDefaultAsync(x => x.Id == cartId && x.IsArchived);
+
+			if (cart is null)
+				return false;
+
+			cart.Status = normalizedStatus;
+			cart.UpdatedOn = DateTime.UtcNow;
+			await context.SaveChangesAsync();
+			return true;
 		}
 
 		public async Task<MyCartViewModel> GetCartById(Guid cartId)
