@@ -134,6 +134,8 @@ public static class AdminEndpointRegistry
         E("TalentsApi", "Save", "POST", "/api/talents/{key}", "talent_trees", "update", AdminRole, AdminPermissions.TalentTrees.Update,
             notes: "Admin-only endpoint lives outside /Admin and currently lacks antiforgery validation."),
 
+        E("DatabaseBackup", "Export", "GET", "/api/admin/database-backup/export", "database_backups", "read", AdminRole, AdminPermissions.DatabaseBackups.Read),
+        E("DatabaseBackup", "Restore", "POST", "/api/admin/database-backup/restore", "database_backups", "restore", AdminRole, AdminPermissions.DatabaseBackups.Restore),
         E("Database", "Index", "GET", "/Admin/api/database", "database", "read", AdminRole, AdminPermissions.Database.Read),
         E("Categories", "List", "GET", "/Admin/api/categories", "categories", "read", AdminRole, AdminPermissions.Categories.Read),
         E("Categories", "History", "GET", "/Admin/api/categories/{id}/history", "categories", "read", AdminRole, AdminPermissions.Categories.Read),

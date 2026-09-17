@@ -157,6 +157,12 @@ public static class AdminPermissions
         public const string Manage = "localization.manage";
     }
 
+    public static class DatabaseBackups
+    {
+        public const string Read = "database_backups.read";
+        public const string Restore = "database_backups.restore";
+    }
+
     public static class Database
     {
         public const string Read = "database.read";

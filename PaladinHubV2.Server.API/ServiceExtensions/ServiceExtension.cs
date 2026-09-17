@@ -55,6 +55,9 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 					environment);
 
 			string connectionString = resolvedConnection.ConnectionString;
+            services.AddSingleton(provider => new PaladinHubV2.Server.API.Services.DatabaseBackupService(
+                connectionString,
+                provider.GetRequiredService<ILogger<PaladinHubV2.Server.API.Services.DatabaseBackupService>>()));
 			bool isDevelopment = environment.IsDevelopment();
 			SameSiteMode cookieSameSite =
 				isDevelopment ? SameSiteMode.Lax : SameSiteMode.None;
