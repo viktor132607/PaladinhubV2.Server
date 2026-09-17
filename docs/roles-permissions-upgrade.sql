@@ -4,22 +4,29 @@
 -- rewritten. Run it after the identity/user seeder so the Admin role exists.
 
 -- Order lifecycle upgrade. Keep this idempotent because database initialization
--- can run repeatedly against an existing PostgreSQL database.
-ALTER TABLE "Carts"
-    ADD COLUMN IF NOT EXISTS "Status" character varying(32) NOT NULL DEFAULT 'Pending';
+-- can run repeatedly against an existing PostgreSQL database. Access-control
+-- integration tests also execute this script against a deliberately reduced
+-- schema, so cart changes are applied only when the Carts table exists.
+DO $$
+BEGIN
+    IF to_regclass('"Carts"') IS NOT NULL THEN
+        ALTER TABLE "Carts"
+            ADD COLUMN IF NOT EXISTS "Status" character varying(32) NOT NULL DEFAULT 'Pending';
 
-UPDATE "Carts"
-SET "Status" = 'Pending'
-WHERE "Status" IS NULL OR btrim("Status") = '';
+        UPDATE "Carts"
+        SET "Status" = 'Pending'
+        WHERE "Status" IS NULL OR btrim("Status") = '';
 
--- A customer may have any number of archived orders, but only one active cart.
--- Older schemas used a globally unique UserId index, which prevented a new
--- active cart from being created after archiving the previous order.
-DROP INDEX IF EXISTS "IX_Carts_UserId";
+        -- A customer may have any number of archived orders, but only one active cart.
+        -- Older schemas used a globally unique UserId index, which prevented a new
+        -- active cart from being created after archiving the previous order.
+        DROP INDEX IF EXISTS "IX_Carts_UserId";
 
-CREATE UNIQUE INDEX IF NOT EXISTS "IX_Carts_Active_UserId"
-    ON "Carts" ("UserId")
-    WHERE "IsArchived" = false;
+        CREATE UNIQUE INDEX IF NOT EXISTS "IX_Carts_Active_UserId"
+            ON "Carts" ("UserId")
+            WHERE "IsArchived" = false;
+    END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS "RoleSecurityProfiles" (
     "RoleId" text PRIMARY KEY,
