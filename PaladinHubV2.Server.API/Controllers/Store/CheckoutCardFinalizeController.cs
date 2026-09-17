@@ -16,14 +16,14 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 	{
 		private readonly UserManager<User> _userManager;
 		private readonly CheckoutCardFlowService _cardFlow;
-		private readonly ICartStore _cartStore;
-		private readonly ICheckoutSessionService _checkoutSession;
+		private readonly ICartStore? _cartStore;
+		private readonly ICheckoutSessionService? _checkoutSession;
 
 		public CheckoutCardFinalizeController(
 			UserManager<User> userManager,
 			CheckoutCardFlowService cardFlow,
-			ICartStore cartStore,
-			ICheckoutSessionService checkoutSession)
+			ICartStore? cartStore = null,
+			ICheckoutSessionService? checkoutSession = null)
 		{
 			_userManager = userManager;
 			_cardFlow = cardFlow;
@@ -39,30 +39,36 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 		{
 			if (string.IsNullOrWhiteSpace(request.PaymentIntentId))
 			{
-				return BadRequest(new
-				{
-					message = "Payment intent ID is required."
-				});
+				return BadRequest(new { message = "Payment intent ID is required." });
 			}
 
-			User user;
-			try
+			User? user = await _userManager.GetUserAsync(User);
+
+			if (user == null)
 			{
-				user = await CheckoutGuestUserResolver.ResolveOrCreateAsync(
-					HttpContext,
-					User,
-					_userManager,
-					_cartStore,
-					_checkoutSession,
-					cancellationToken);
-			}
-			catch (InvalidOperationException error)
-			{
-				return BadRequest(new
+				if (_cartStore == null || _checkoutSession == null)
 				{
-					message = error.Message,
-					redirect = "/Checkout/Shipping"
-				});
+					return Unauthorized(new { message = "Authentication required." });
+				}
+
+				try
+				{
+					user = await CheckoutGuestUserResolver.ResolveOrCreateAsync(
+						HttpContext,
+						User,
+						_userManager,
+						_cartStore,
+						_checkoutSession,
+						cancellationToken);
+				}
+				catch (InvalidOperationException error)
+				{
+					return BadRequest(new
+					{
+						message = error.Message,
+						redirect = "/Checkout/Shipping"
+					});
+				}
 			}
 
 			CheckoutCardFinalizeResult result =
@@ -143,9 +149,7 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 			{
 				ok = true,
 				orderId,
-				redirect =
-					$"/Checkout/Success?orderId=" +
-					Uri.EscapeDataString(orderId)
+				redirect = $"/Checkout/Success?orderId=" + Uri.EscapeDataString(orderId)
 			});
 		}
 
