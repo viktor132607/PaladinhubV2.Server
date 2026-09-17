@@ -16,14 +16,14 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 	{
 		private readonly UserManager<User> _userManager;
 		private readonly CheckoutCardFlowService _cardFlow;
-		private readonly ICartStore _cartStore;
-		private readonly ICheckoutSessionService _checkoutSession;
+		private readonly ICartStore? _cartStore;
+		private readonly ICheckoutSessionService? _checkoutSession;
 
 		public CheckoutCardsController(
 			UserManager<User> userManager,
 			CheckoutCardFlowService cardFlow,
-			ICartStore cartStore,
-			ICheckoutSessionService checkoutSession)
+			ICartStore? cartStore = null,
+			ICheckoutSessionService? checkoutSession = null)
 		{
 			_userManager = userManager;
 			_cardFlow = cardFlow;
@@ -38,30 +38,37 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 		public async Task<IActionResult> Card(
 			CancellationToken cancellationToken)
 		{
-			User user;
-			try
+			User? user = await _userManager.GetUserAsync(User);
+
+			if (user == null)
 			{
-				user = await CheckoutGuestUserResolver.ResolveOrCreateAsync(
-					HttpContext,
-					User,
-					_userManager,
-					_cartStore,
-					_checkoutSession,
-					cancellationToken);
-			}
-			catch (InvalidOperationException error)
-			{
-				return Conflict(new
+				if (_cartStore == null || _checkoutSession == null)
 				{
-					message = error.Message,
-					redirect = "/Checkout/Shipping"
-				});
+					return Unauthorized(new { message = "Authentication required." });
+				}
+
+				try
+				{
+					user = await CheckoutGuestUserResolver.ResolveOrCreateAsync(
+						HttpContext,
+						User,
+						_userManager,
+						_cartStore,
+						_checkoutSession,
+						cancellationToken);
+				}
+				catch (InvalidOperationException error)
+				{
+					return Conflict(new
+					{
+						message = error.Message,
+						redirect = "/Checkout/Shipping"
+					});
+				}
 			}
 
 			CheckoutCardSetupResult result =
-				await _cardFlow.PrepareAsync(
-					user,
-					cancellationToken);
+				await _cardFlow.PrepareAsync(user, cancellationToken);
 
 			IActionResult? errorResult = MapError(result.Error);
 			if (errorResult != null)
@@ -110,17 +117,11 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 				CheckoutCardFlowError.MissingClientSecret =>
 					StatusCode(
 						StatusCodes.Status502BadGateway,
-						new
-						{
-							message = "Stripe did not return a client secret."
-						}),
+						new { message = "Stripe did not return a client secret." }),
 				CheckoutCardFlowError.SessionCreateFailed =>
 					StatusCode(
 						StatusCodes.Status502BadGateway,
-						new
-						{
-							message = "Card payment session could not be created."
-						}),
+						new { message = "Card payment session could not be created." }),
 				_ =>
 					StatusCode(
 						StatusCodes.Status502BadGateway,
