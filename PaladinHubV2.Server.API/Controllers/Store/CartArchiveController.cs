@@ -13,63 +13,59 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 	{
 		private readonly ICartService _cartService;
 
-		public CartArchiveController(
-			ICartService cartService)
+		public CartArchiveController(ICartService cartService)
 		{
 			_cartService = cartService;
 		}
 
 		[HttpGet("archive")]
-		[ResponseCache(
-			NoStore = true,
-			Location = ResponseCacheLocation.None)]
+		[HttpGet("Archive")]
+		[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 		public async Task<IActionResult> Archive()
 		{
-			var archivedCarts =
-				await _cartService.GetArchive();
-
-			var response = archivedCarts.Select(cart => new
-			{
-				id = cart.Id,
-				username =
-					cart.User?.UserName ??
-					"Unknown",
-				orderDate =
-					cart.OrderDate ??
-					string.Empty
-			});
-
-			return Ok(response);
+			return Ok(await _cartService.GetArchivedOrders());
 		}
 
 		[HttpGet("archive/{id:guid}")]
 		[HttpGet("Details/{id:guid}")]
-		[ResponseCache(
-			NoStore = true,
-			Location = ResponseCacheLocation.None)]
-		public async Task<IActionResult> Details(
-			[FromRoute] Guid id)
+		[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+		public async Task<IActionResult> Details([FromRoute] Guid id)
 		{
 			if (id == Guid.Empty)
+				return BadRequest(new { message = "Invalid cart ID." });
+
+			var order = await _cartService.GetArchivedOrder(id);
+			if (order is null)
+				return NotFound(new { message = "Archived cart not found." });
+
+			return Ok(order);
+		}
+
+		[HttpPut("archive/{id:guid}/status")]
+		[HttpPut("Archive/{id:guid}/Status")]
+		public async Task<IActionResult> UpdateStatus(
+			[FromRoute] Guid id,
+			[FromBody] UpdateOrderStatusRequest request)
+		{
+			if (id == Guid.Empty)
+				return BadRequest(new { message = "Invalid cart ID." });
+
+			if (!OrderStatusCatalog.TryNormalize(request.Status, out string normalizedStatus))
 			{
 				return BadRequest(new
 				{
-					message = "Invalid cart ID."
+					message = "Invalid order status.",
+					allowedStatuses = OrderStatusCatalog.All
 				});
 			}
 
-			var cart =
-				await _cartService.GetCartById(id);
+			bool updated = await _cartService.UpdateOrderStatus(id, normalizedStatus);
+			if (!updated)
+				return NotFound(new { message = "Archived cart not found." });
 
-			if (cart == null)
-			{
-				return NotFound(new
-				{
-					message = "Archived cart not found."
-				});
-			}
-
-			return Ok(cart);
+			return Ok(new { id, status = normalizedStatus });
 		}
+
+		public sealed record UpdateOrderStatusRequest(string Status);
 	}
 }
