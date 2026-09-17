@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using PaladinHub.Models.Checkout;
 using PaladinHubV2.Server.Data.Entities;
+using PaladinHubV2.Server.Domain.Services;
 using PaladinHubV2.Server.Domain.Services.Checkout;
 using CheckoutPaymentMethod =
 	PaladinHub.Models.Checkout.PaymentMethod;
@@ -11,7 +12,7 @@ using CheckoutPaymentMethod =
 namespace PaladinHubV2.Server.API.Controllers.Store
 {
 	[ApiController]
-	[Authorize]
+	[AllowAnonymous]
 	[Route("api/checkout")]
 	[Route("Checkout")]
 	public sealed class CheckoutController : ControllerBase
@@ -19,17 +20,20 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 		private readonly UserManager<User> _userManager;
 		private readonly ICheckoutSessionService _checkoutSession;
 		private readonly ICheckoutOrderService _checkoutOrders;
+		private readonly ICartStore _cartStore;
 		private readonly string _clientBaseUrl;
 
 		public CheckoutController(
 			UserManager<User> userManager,
 			ICheckoutSessionService checkoutSession,
 			ICheckoutOrderService checkoutOrders,
+			ICartStore cartStore,
 			IConfiguration configuration)
 		{
 			_userManager = userManager;
 			_checkoutSession = checkoutSession;
 			_checkoutOrders = checkoutOrders;
+			_cartStore = cartStore;
 
 			_clientBaseUrl =
 				(
@@ -153,6 +157,16 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 				});
 			}
 
+			if (User.Identity?.IsAuthenticated != true &&
+				model.Method == CheckoutPaymentMethod.Balance)
+			{
+				return BadRequest(new
+				{
+					message =
+						"Balance payment requires a signed-in account."
+				});
+			}
+
 			CheckoutState state =
 				_checkoutSession.GetState();
 
@@ -187,18 +201,6 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 		public async Task<IActionResult> Review(
 			CancellationToken cancellationToken)
 		{
-			User? user =
-				await _userManager.GetUserAsync(User);
-
-			if (user == null)
-			{
-				return Unauthorized(new
-				{
-					message =
-						"Authentication required."
-				});
-			}
-
 			CheckoutState state =
 				_checkoutSession.GetState();
 
@@ -212,6 +214,26 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 
 					redirect =
 						"/Checkout/Shipping"
+				});
+			}
+
+			User user;
+			try
+			{
+				user = await CheckoutGuestUserResolver.ResolveOrCreateAsync(
+					HttpContext,
+					User,
+					_userManager,
+					_cartStore,
+					_checkoutSession,
+					cancellationToken);
+			}
+			catch (InvalidOperationException error)
+			{
+				return BadRequest(new
+				{
+					message = error.Message,
+					redirect = "/Checkout/Shipping"
 				});
 			}
 
@@ -251,7 +273,8 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 				items = snapshot.Items,
 				walletBalance = paymentReview.WalletBalance,
 				paymentError = paymentReview.PaymentError,
-				orderId = state.OrderId
+				orderId = state.OrderId,
+				isGuest = User.Identity?.IsAuthenticated != true
 			});
 		}
 	}
