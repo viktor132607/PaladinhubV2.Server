@@ -3,25 +3,32 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using PaladinHubV2.Server.Data.Entities;
+using PaladinHubV2.Server.Domain.Services;
 using PaladinHubV2.Server.Domain.Services.Checkout;
 
 namespace PaladinHubV2.Server.API.Controllers.Store
 {
 	[ApiController]
-	[Authorize]
+	[AllowAnonymous]
 	[Route("api/checkout")]
 	[Route("Checkout")]
 	public sealed class CheckoutCardsController : ControllerBase
 	{
 		private readonly UserManager<User> _userManager;
 		private readonly CheckoutCardFlowService _cardFlow;
+		private readonly ICartStore _cartStore;
+		private readonly ICheckoutSessionService _checkoutSession;
 
 		public CheckoutCardsController(
 			UserManager<User> userManager,
-			CheckoutCardFlowService cardFlow)
+			CheckoutCardFlowService cardFlow,
+			ICartStore cartStore,
+			ICheckoutSessionService checkoutSession)
 		{
 			_userManager = userManager;
 			_cardFlow = cardFlow;
+			_cartStore = cartStore;
+			_checkoutSession = checkoutSession;
 		}
 
 		[HttpGet("Card")]
@@ -31,12 +38,23 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 		public async Task<IActionResult> Card(
 			CancellationToken cancellationToken)
 		{
-			User? user = await _userManager.GetUserAsync(User);
-			if (user == null)
+			User user;
+			try
 			{
-				return Unauthorized(new
+				user = await CheckoutGuestUserResolver.ResolveOrCreateAsync(
+					HttpContext,
+					User,
+					_userManager,
+					_cartStore,
+					_checkoutSession,
+					cancellationToken);
+			}
+			catch (InvalidOperationException error)
+			{
+				return Conflict(new
 				{
-					message = "Authentication required."
+					message = error.Message,
+					redirect = "/Checkout/Shipping"
 				});
 			}
 
@@ -45,10 +63,10 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 					user,
 					cancellationToken);
 
-			IActionResult? error = MapError(result.Error);
-			if (error != null)
+			IActionResult? errorResult = MapError(result.Error);
+			if (errorResult != null)
 			{
-				return error;
+				return errorResult;
 			}
 
 			return Ok(new
