@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using PaladinHub.Models.Checkout;
 using PaladinHubV2.Server.Data.Entities;
+using PaladinHubV2.Server.Domain.Services;
 using PaladinHubV2.Server.Domain.Services.Checkout;
 using CheckoutPaymentMethod =
 	PaladinHub.Models.Checkout.PaymentMethod;
@@ -10,7 +11,7 @@ using CheckoutPaymentMethod =
 namespace PaladinHubV2.Server.API.Controllers.Store
 {
 	[ApiController]
-	[Authorize]
+	[AllowAnonymous]
 	[Route("api/checkout")]
 	[Route("Checkout")]
 	public sealed class CheckoutOrdersController : ControllerBase
@@ -18,15 +19,18 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 		private readonly UserManager<User> _userManager;
 		private readonly ICheckoutSessionService _checkoutSession;
 		private readonly ICheckoutOrderService _checkoutOrders;
+		private readonly ICartStore _cartStore;
 
 		public CheckoutOrdersController(
 			UserManager<User> userManager,
 			ICheckoutSessionService checkoutSession,
-			ICheckoutOrderService checkoutOrders)
+			ICheckoutOrderService checkoutOrders,
+			ICartStore cartStore)
 		{
 			_userManager = userManager;
 			_checkoutSession = checkoutSession;
 			_checkoutOrders = checkoutOrders;
+			_cartStore = cartStore;
 		}
 
 		[HttpPost("PlaceOrder")]
@@ -34,18 +38,6 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 		public async Task<IActionResult> PlaceOrder(
 			CancellationToken cancellationToken)
 		{
-			User? user =
-				await _userManager.GetUserAsync(User);
-
-			if (user == null)
-			{
-				return Unauthorized(new
-				{
-					message =
-						"Authentication required."
-				});
-			}
-
 			CheckoutState state =
 				_checkoutSession.GetState();
 
@@ -59,6 +51,37 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 
 					redirect =
 						"/Checkout/Shipping"
+				});
+			}
+
+			if (User.Identity?.IsAuthenticated != true &&
+				state.PaymentMethod == CheckoutPaymentMethod.Balance)
+			{
+				return BadRequest(new
+				{
+					message =
+						"Balance payment requires a signed-in account.",
+					redirect = "/Checkout/Payment"
+				});
+			}
+
+			User user;
+			try
+			{
+				user = await CheckoutGuestUserResolver.ResolveOrCreateAsync(
+					HttpContext,
+					User,
+					_userManager,
+					_cartStore,
+					_checkoutSession,
+					cancellationToken);
+			}
+			catch (InvalidOperationException error)
+			{
+				return BadRequest(new
+				{
+					message = error.Message,
+					redirect = "/Checkout/Shipping"
 				});
 			}
 
