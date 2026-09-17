@@ -5,7 +5,7 @@ using PaladinHubV2.Server.Domain.Services.Carts;
 namespace PaladinHubV2.Server.API.Controllers.Store
 {
 	[ApiController]
-	[Authorize(Roles = "Admin")]
+	[Authorize]
 	[Route("api/cart")]
 	[Route("Cart")]
 	[AutoValidateAntiforgeryToken]
@@ -18,14 +18,32 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 			_cartService = cartService;
 		}
 
+		[Authorize(Roles = "Admin")]
 		[HttpGet("archive")]
 		[HttpGet("Archive")]
 		[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 		public async Task<IActionResult> Archive()
 		{
-			return Ok(await _cartService.GetArchivedOrders());
+			var legacyCarts = await _cartService.GetArchive();
+			var orders = await _cartService.GetArchivedOrders();
+
+			if (orders is not null)
+			{
+				return Ok(orders);
+			}
+
+			var response = legacyCarts.Select(cart => new
+			{
+				id = cart.Id,
+				username = cart.User?.UserName ?? "Unknown",
+				orderDate = cart.OrderDate ?? string.Empty,
+				status = OrderStatusCatalog.Pending
+			});
+
+			return Ok(response);
 		}
 
+		[Authorize(Roles = "Admin")]
 		[HttpGet("archive/{id:guid}")]
 		[HttpGet("Details/{id:guid}")]
 		[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
@@ -34,11 +52,12 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 			if (id == Guid.Empty)
 				return BadRequest(new { message = "Invalid cart ID." });
 
-			var order = await _cartService.GetArchivedOrder(id);
-			if (order is null)
+			var cart = await _cartService.GetCartById(id);
+			if (cart is null)
 				return NotFound(new { message = "Archived cart not found." });
 
-			return Ok(order);
+			var order = await _cartService.GetArchivedOrder(id);
+			return Ok(order is null ? cart : order);
 		}
 
 		[HttpPut("archive/{id:guid}/status")]
@@ -47,6 +66,9 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 			[FromRoute] Guid id,
 			[FromBody] UpdateOrderStatusRequest request)
 		{
+			if (!User.IsInRole("Admin"))
+				return Forbid();
+
 			if (id == Guid.Empty)
 				return BadRequest(new { message = "Invalid cart ID." });
 
