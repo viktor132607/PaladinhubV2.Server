@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using PaladinHubV2.Server.Data.Entities;
@@ -21,15 +20,17 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 
 		protected Task<User?> CurrentUserAsync()
 		{
-			return _userManager.GetUserAsync(User);
+			return CheckoutGuestUserResolver.ResolveExistingAsync(
+				HttpContext,
+				User,
+				_userManager);
 		}
 
 		protected string OwnerKey()
 		{
-			string? userId =
-				User.FindFirstValue(ClaimTypes.NameIdentifier);
-
-			return userId ?? $"anon:{HttpContext.Session.Id}";
+			return CheckoutGuestUserResolver.GetOwnerKey(
+				HttpContext,
+				User);
 		}
 
 		protected IActionResult CartError(string message)
