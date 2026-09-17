@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace PaladinHubV2.Server.API.Controllers.Store
 {
 	[ApiController]
-	[Authorize]
+	[AllowAnonymous]
 	[Route("api/checkout")]
 	[Route("Checkout")]
 	public sealed class CheckoutStatusController : ControllerBase
