@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Diagnostics;
 using Moq;
 using PaladinHubV2.Server.Data;
 using PaladinHubV2.Server.Data.Entities;
@@ -51,12 +50,7 @@ public sealed class SeoRefactorTests
 
     private static AppDbContext InMemory()
     {
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
-            .ConfigureWarnings(warnings =>
-                warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
-            .Options;
-        return new AppDbContext(options);
+        return PageBuilderSqliteTestDatabase.CreateContext();
     }
 
     [Fact]
@@ -555,12 +549,22 @@ public sealed class SeoRefactorTests
         };
         db.SpellIcons.AddRange(activeMedia, inactiveMedia);
 
+        var discussionAuthor = new User
+        {
+            Id = "user-1",
+            UserName = "seo-test-user",
+            NormalizedUserName = "SEO-TEST-USER",
+            Email = "seo-test@example.test",
+            NormalizedEmail = "SEO-TEST@EXAMPLE.TEST"
+        };
+        db.Users.Add(discussionAuthor);
         db.DiscussionPosts.Add(new DiscussionPost
         {
             Id = Guid.NewGuid(),
             Title = "Discussion",
             Content = "<p>Hello &amp; world</p>",
-            AuthorId = "user-1"
+            AuthorId = discussionAuthor.Id,
+            Author = discussionAuthor
         });
 
         await db.SaveChangesAsync(Ct);
