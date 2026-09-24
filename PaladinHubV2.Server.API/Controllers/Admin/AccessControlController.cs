@@ -1,8 +1,6 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using PaladinHubV2.Server.Data;
 using PaladinHubV2.Server.Domain.Services.Roles;
 
 namespace PaladinHubV2.Server.API.Controllers.Admin;
@@ -15,11 +13,9 @@ public sealed class AccessControlController : ControllerBase
 {
     private readonly AccessControlAdminService _service;
 
-    public AccessControlController(AppDbContext database)
+    public AccessControlController(AccessControlAdminService service)
     {
-        string connectionString = database.Database.GetConnectionString()
-            ?? throw new InvalidOperationException("Access-control database connection is unavailable.");
-        _service = AccessControlAdminService.ForPostgres(connectionString);
+        _service = service;
     }
 
     [HttpGet("permissions")]
