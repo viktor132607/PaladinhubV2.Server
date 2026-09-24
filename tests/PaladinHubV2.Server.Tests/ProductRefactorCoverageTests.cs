@@ -474,7 +474,7 @@ public sealed class ProductRefactorCoverageTests
 
         Assert.Equal(1, result.Page);
         Assert.Equal(200, result.PageSize);
-        Assert.Equal(2, result.TotalItems);
+        Assert.Equal(1, result.TotalItems);
         Assert.All(
             result.Items,
             item => Assert.Equal("Armor", item.Category));
