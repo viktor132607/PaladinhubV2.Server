@@ -241,9 +241,9 @@ namespace PaladinHubV2.Server.Data
 				entity.Property(user => user.StripeCustomerId)
 					.HasMaxLength(128);
 
-				entity.HasOne(user => user.Cart)
+				entity.HasMany(user => user.Carts)
 					.WithOne(cart => cart.User)
-					.HasForeignKey<Cart>(cart => cart.UserId)
+					.HasForeignKey(cart => cart.UserId)
 					.OnDelete(DeleteBehavior.Cascade);
 
 				entity.HasMany(user => user.PaymentMethods)
