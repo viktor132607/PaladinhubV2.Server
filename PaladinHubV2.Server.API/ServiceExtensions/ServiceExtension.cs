@@ -249,6 +249,7 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 			services.AddScoped<MerchandiseService>();
 
 			services.AddScoped<IRoleService, RoleService>();
+			services.AddScoped(_ => AccessControlAdminService.ForPostgres(connectionString));
 			services.AddTransient<HolySectionService>();
 			services.AddTransient<ProtectionSectionService>();
 			services.AddTransient<RetributionSectionService>();
