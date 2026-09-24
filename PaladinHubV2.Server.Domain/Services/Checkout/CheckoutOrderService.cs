@@ -112,6 +112,7 @@ namespace PaladinHubV2.Server.Domain.Services.Checkout
 			{
 				walletBalance =
 					await _wallet.GetBalanceAsync(user.Id);
+				state.UsdPerEur = 0m;
 
 				try
 				{
