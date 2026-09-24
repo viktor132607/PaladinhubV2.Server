@@ -148,9 +148,9 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 			return guestUser;
 		}
 
-		private static ISession? GetSession(HttpContext httpContext)
+		private static ISession? GetSession(HttpContext? httpContext)
 		{
-			return httpContext.Features.Get<ISessionFeature>()?.Session;
+			return httpContext?.Features.Get<ISessionFeature>()?.Session;
 		}
 	}
 }
