@@ -413,9 +413,9 @@ public sealed class DatabaseBackupRefactorCoverageTests
                 expected,
                 executor.StartInfo!
                     .Environment["PGSSLMODE"]);
-            Assert.Null(
-                executor.StartInfo
-                    .Environment["PGPASSWORD"]);
+            Assert.False(
+                executor.StartInfo!
+                    .Environment.ContainsKey("PGPASSWORD"));
         }
 
         var blankErrorExecutor =
