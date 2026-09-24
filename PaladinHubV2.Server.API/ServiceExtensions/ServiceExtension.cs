@@ -244,6 +244,10 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 			services.AddScoped<ICartService, CartService>();
 			services.AddScoped<CartFlowService>();
 
+			services.AddScoped<IProductCatalogQueryService, ProductCatalogQueryService>();
+			services.AddScoped<IProductSearchService, ProductSearchService>();
+			services.AddScoped<IProductMutationService, ProductMutationService>();
+			services.AddScoped<IProductReviewService, ProductReviewService>();
 			services.AddScoped<IProductService, ProductServiceAlias>();
 			services.AddScoped<IProductAdminFormService, ProductAdminFormService>();
 			services.AddScoped<MerchandiseService>();

@@ -27,6 +27,16 @@
     <Include>[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Roles.AccessControlAdminService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Roles.AccessControlQueryService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Roles.AccessControlRules,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Roles.AccessControlJournal</Include>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(ProductRefactorCoverage)' == 'true'">
+    <CollectCoverage>true</CollectCoverage>
+    <CoverletOutputFormat>json</CoverletOutputFormat>
+    <CoverletOutput>$(MSBuildProjectDirectory)/coverage/product-refactor.json</CoverletOutput>
+    <Threshold>100</Threshold>
+    <ThresholdType>line</ThresholdType>
+    <ThresholdStat>total</ThresholdStat>
+    <Include>[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Products.ProductService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Products.ProductCatalogQueryService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Products.ProductSearchService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Products.ProductSearchRules,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Products.ProductMutationService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Products.ProductReviewService</Include>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="coverlet.msbuild">
