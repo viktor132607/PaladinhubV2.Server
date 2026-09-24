@@ -305,6 +305,7 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 			services.AddScoped<AuthLoginService>();
 			services.AddHttpClient<AccountEmailService>();
 			services.AddHttpClient<PaladinHubV2.Server.API.Services.EuroUsdRateService>();
+			services.AddScoped<IEuroUsdRateProvider>(provider => provider.GetRequiredService<PaladinHubV2.Server.API.Services.EuroUsdRateService>());
 			services.AddScoped<ISecurityService, SecurityService>();
 			services.AddScoped<AccountTwoFactorService>();
 			services.AddScoped<IAvatarService, AvatarService>();

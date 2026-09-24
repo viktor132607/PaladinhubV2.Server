@@ -67,17 +67,20 @@ namespace PaladinHubV2.Server.Domain.Services.Checkout
 		private readonly IProductService _productService;
 		private readonly IWalletService _wallet;
 		private readonly AppDbContext _db;
+		private readonly IEuroUsdRateProvider? _rates;
 
 		public CheckoutOrderService(
 			ICartSessionService cartSession,
 			IProductService productService,
 			IWalletService wallet,
-			AppDbContext db)
+			AppDbContext db,
+			IEuroUsdRateProvider? rates = null)
 		{
 			_cartSession = cartSession;
 			_productService = productService;
 			_wallet = wallet;
 			_db = db;
+			_rates = rates;
 		}
 
 		public async Task<CheckoutCartSnapshot> GetCartSnapshotAsync(
@@ -110,7 +113,18 @@ namespace PaladinHubV2.Server.Domain.Services.Checkout
 				walletBalance =
 					await _wallet.GetBalanceAsync(user.Id);
 
-				if (walletBalance < total)
+				try
+				{
+					state.UsdPerEur = _rates is null ? 0m : await _rates.GetUsdPerEurAsync(CancellationToken.None);
+				}
+				catch (Exception error) when (error is HttpRequestException or TaskCanceledException or InvalidDataException or System.Xml.XmlException)
+				{
+					paymentError = "Wallet payments are temporarily unavailable while the exchange rate cannot be verified.";
+				}
+				if (_rates is not null && state.UsdPerEur <= 0m)
+					paymentError = "Wallet payments are temporarily unavailable while the exchange rate cannot be verified.";
+				decimal walletTotal = state.UsdPerEur > 0m ? decimal.Round(total * state.UsdPerEur, 2, MidpointRounding.AwayFromZero) : total;
+				if (paymentError is null && walletBalance < walletTotal)
 				{
 					paymentError =
 						"Insufficient wallet balance.";
@@ -180,12 +194,16 @@ namespace PaladinHubV2.Server.Domain.Services.Checkout
 
 			if (!alreadyProcessed)
 			{
+				if (_rates is not null && state.UsdPerEur <= 0m)
+					return new CheckoutOrderPlacementResult(false, "Wallet payments are temporarily unavailable while the exchange rate cannot be verified.");
+				decimal walletTotal = state.UsdPerEur > 0m
+					? decimal.Round(state.Total * state.UsdPerEur, 2, MidpointRounding.AwayFromZero) : state.Total;
 				try
 				{
 					Guid transactionId =
 						await _wallet.ChargeAsync(
 							user.Id,
-							state.Total,
+							walletTotal,
 							$"Order {orderId} (Wallet)");
 
 					await AttachOrderMetadataAsync(

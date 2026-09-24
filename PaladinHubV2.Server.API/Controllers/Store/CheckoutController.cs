@@ -214,6 +214,7 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 					user,
 					state,
 					state.Total);
+			_checkoutSession.SaveState(state);
 
 			return Ok(new
 			{
@@ -222,6 +223,7 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 				total = state.Total,
 				items = snapshot.Items,
 				walletBalance = paymentReview.WalletBalance,
+				walletUsdPerEur = state.PaymentMethod == PaladinHub.Models.Checkout.PaymentMethod.Balance ? state.UsdPerEur : 0m,
 				paymentError = paymentReview.PaymentError,
 				orderId = state.OrderId,
 				isGuest = User.Identity?.IsAuthenticated != true

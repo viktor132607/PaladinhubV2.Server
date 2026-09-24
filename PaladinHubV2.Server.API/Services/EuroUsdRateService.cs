@@ -1,12 +1,13 @@
 using System.Globalization;
 using System.Xml.Linq;
 using Microsoft.Extensions.Caching.Memory;
+using PaladinHubV2.Server.Domain.Services.Checkout;
 
 namespace PaladinHubV2.Server.API.Services;
 
 public sealed record EuroUsdRate(decimal UsdPerEur, string AsOf);
 
-public sealed class EuroUsdRateService
+public sealed class EuroUsdRateService : IEuroUsdRateProvider
 {
     private const string CacheKey = "currency:eur-usd";
     private readonly HttpClient _client;
@@ -33,4 +34,7 @@ public sealed class EuroUsdRateService
         _cache.Set(CacheKey, result, TimeSpan.FromHours(12));
         return result;
     }
+
+    public async Task<decimal> GetUsdPerEurAsync(CancellationToken cancellationToken) =>
+        (await GetAsync(cancellationToken)).UsdPerEur;
 }
