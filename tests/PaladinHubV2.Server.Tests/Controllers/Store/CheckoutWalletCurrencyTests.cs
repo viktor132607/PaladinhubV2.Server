@@ -7,6 +7,7 @@ using PaladinHubV2.Server.Domain.Services.Carts;
 using PaladinHubV2.Server.Domain.Services.Checkout;
 using PaladinHubV2.Server.Domain.Services.Products;
 using PaladinHubV2.Server.Domain.Services.Wallet;
+using PaymentMethod = PaladinHub.Models.Checkout.PaymentMethod;
 
 namespace PaladinHubV2.Server.Tests.Controllers.Store;
 
