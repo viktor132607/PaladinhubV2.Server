@@ -56,28 +56,25 @@ public sealed class PhysicalAccountAvatarStore : IAccountAvatarStore
             return false;
         }
 
-        try
+        if (webPath.IndexOf('\0') >= 0)
         {
-            string fileName = Path.GetFileName(webPath);
-
-            if (string.IsNullOrWhiteSpace(fileName))
-            {
-                return false;
-            }
-
-            string directory =
-                Path.GetFullPath(GetAvatarDirectory(userId));
-
-            fullPath = Path.GetFullPath(
-                Path.Combine(directory, fileName));
-
-            return true;
-        }
-        catch
-        {
-            fullPath = string.Empty;
             return false;
         }
+
+        string fileName = Path.GetFileName(webPath);
+
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            return false;
+        }
+
+        string directory =
+            Path.GetFullPath(GetAvatarDirectory(userId));
+
+        fullPath = Path.GetFullPath(
+            Path.Combine(directory, fileName));
+
+        return true;
     }
 
     public bool Exists(string fullPath) =>
