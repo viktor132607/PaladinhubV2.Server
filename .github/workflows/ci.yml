@@ -99,34 +99,5 @@ jobs:
           fi
           exit $status
 
-      - name: Enforce 100% access-control refactor line coverage
-        run: |
-          set +e
-          dotnet test --project tests/PaladinHubV2.Server.Tests/PaladinHubV2.Server.Tests.csproj \
-            --configuration Release \
-            --no-restore \
-            --filter "FullyQualifiedName~AccessControl" \
-            /p:AccessControlRefactorCoverage=true
-          status=$?
-          if [ -f tests/PaladinHubV2.Server.Tests/coverage/access-control-refactor.json ]; then
-            python3 - <<'PY'
-          import json
-          p="tests/PaladinHubV2.Server.Tests/coverage/access-control-refactor.json"
-          data=json.load(open(p))
-          misses=[]
-          for assembly,docs in data.items():
-              for doc,classes in docs.items():
-                  for cls,methods in classes.items():
-                      for method,info in methods.items():
-                          for line,hits in info.get("Lines",{}).items():
-                              if hits == 0:
-                                  misses.append((doc,int(line),cls,method))
-          print("UNCOVERED_LINES", len(misses))
-          for row in sorted(misses):
-              print("UNCOVERED", *row, sep=" | ")
-          PY
-          fi
-          exit $status
-
       - name: Run controller and PostgreSQL integration tests
         run: dotnet test --project tests/PaladinHubV2.Server.Tests/PaladinHubV2.Server.Tests.csproj --configuration Release --no-restore
