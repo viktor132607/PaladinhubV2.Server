@@ -185,7 +185,7 @@ public sealed class SeoTests
     public async Task InvalidCreateDoesNotWrite()
     {
         await using AppDbContext db = PageBuilderSqliteTestDatabase.CreateContext();
-        var controller = new SeoController(db)
+        var controller = new SeoController(new SeoService(db))
         {
             ControllerContext = new ControllerContext
             {
@@ -680,7 +680,7 @@ public sealed class SeoTests
             })
             .Build();
 
-        var controller = new PublicSeoController(db, configuration)
+        var controller = new PublicSeoController(new SeoService(db), configuration)
         {
             ControllerContext = new ControllerContext
             {

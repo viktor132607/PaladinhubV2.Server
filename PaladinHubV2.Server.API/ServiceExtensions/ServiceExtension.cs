@@ -32,6 +32,7 @@ using PaladinHubV2.Server.Domain.Services.Products;
 using PaladinHubV2.Server.Domain.Services.Promos;
 using PaladinHubV2.Server.Domain.Services.Roles;
 using PaladinHubV2.Server.Domain.Services.SectionServices;
+using PaladinHubV2.Server.Domain.Services.Seo;
 using PaladinHubV2.Server.Domain.Services.SpellbookService;
 using PaladinHubV2.Server.Domain.Services.TalentTrees;
 using PaladinHubV2.Server.Domain.Services.Transactions;
@@ -267,6 +268,10 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 			services.AddScoped<ITransactionsService, TransactionsService>();
 			services.AddScoped<IWalletService, WalletService>();
 			services.AddScoped<IDiscussionService, DiscussionService>();
+			services.AddScoped<ISeoTargetResolver, SeoTargetResolver>();
+			services.AddScoped<ISeoPublicSnapshotService, SeoPublicSnapshotService>();
+			services.AddScoped<ISeoMutationLock, SeoMutationLock>();
+			services.AddScoped<SeoService>();
 			services.AddScoped<ICartSessionService, CartSessionService>();
 
 			services.AddScoped<ICheckoutSessionService, CheckoutSessionService>();
