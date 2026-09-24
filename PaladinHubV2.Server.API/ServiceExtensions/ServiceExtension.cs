@@ -242,6 +242,11 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 			services.AddScoped<ItemAdminService>();
 
 			services.AddScoped<ICartService, CartService>();
+			services.AddScoped<ICartSessionRequestPolicy, CartSessionRequestPolicy>();
+			services.AddScoped<IAnonymousCartSessionService, AnonymousCartSessionService>();
+			services.AddScoped<IPersistentCartSessionService, PersistentCartSessionService>();
+			services.AddScoped<ICartSessionLifecycleService, CartSessionLifecycleService>();
+			services.AddScoped<ICartSessionService, CartSessionService>();
 			services.AddScoped<CartFlowService>();
 
 			services.AddScoped<IProductCatalogQueryService, ProductCatalogQueryService>();
@@ -291,7 +296,6 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 			services.AddScoped<ISeoPublicSnapshotService, SeoPublicSnapshotService>();
 			services.AddScoped<ISeoMutationLock, SeoMutationLock>();
 			services.AddScoped<SeoService>();
-			services.AddScoped<ICartSessionService, CartSessionService>();
 
 			services.AddScoped<ICheckoutSessionService, CheckoutSessionService>();
 			services.AddScoped<ICheckoutOrderService, CheckoutOrderService>();
