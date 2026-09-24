@@ -292,7 +292,8 @@ namespace PaladinHubV2.Server.Data
 					.IsRequired();
 
 				entity.HasIndex(cart => cart.UserId)
-					.IsUnique();
+					.IsUnique()
+					.HasFilter("\"IsArchived\" = FALSE");
 			});
 
 			builder.Entity<CartProduct>(entity =>
