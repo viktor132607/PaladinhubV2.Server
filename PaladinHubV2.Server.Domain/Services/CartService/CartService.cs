@@ -1,306 +1,68 @@
-using Microsoft.AspNetCore.Identity;
-using Microsoft.EntityFrameworkCore;
-using PaladinHubV2.Server.Data;
-using PaladinHubV2.Server.Data.Entities;
 using PaladinHub.Models.Carts;
-using PaladinHub.Models.Products;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
+using PaladinHubV2.Server.Data.Entities;
 
-namespace PaladinHubV2.Server.Domain.Services.Carts
+namespace PaladinHubV2.Server.Domain.Services.Carts;
+
+public sealed class CartService : ICartService
 {
-	public class CartService : ICartService
-	{
-		private readonly AppDbContext context;
-		private readonly UserManager<User> userManager;
+    private readonly ICartActiveService _activeCart;
+    private readonly ICartArchiveQueryService _archiveQueries;
+    private readonly ICartArchiveMutationService _archiveMutations;
 
-		public CartService(AppDbContext context, UserManager<User> userManager)
-		{
-			this.context = context;
-			this.userManager = userManager;
-		}
+    public CartService(
+        ICartActiveService activeCart,
+        ICartArchiveQueryService archiveQueries,
+        ICartArchiveMutationService archiveMutations)
+    {
+        _activeCart = activeCart;
+        _archiveQueries = archiveQueries;
+        _archiveMutations = archiveMutations;
+    }
 
-		private async Task<Cart> GetOrCreateCartAsync(string userId)
-		{
-			var cart = await context.Carts.FirstOrDefaultAsync(x => x.UserId == userId && !x.IsArchived);
-			if (cart == null)
-			{
-				cart = new Cart
-				{
-					Id = Guid.NewGuid(),
-					UserId = userId,
-					Status = OrderStatusCatalog.Pending,
-					UpdatedOn = DateTime.UtcNow
-				};
-				await context.Carts.AddAsync(cart);
-				await context.SaveChangesAsync();
-			}
-			return cart;
-		}
+    public Task<MyCartViewModel?> GetCartById(Guid cartId) =>
+        _archiveQueries.GetCartById(cartId);
 
-		public async Task<bool> AddProduct(string id, string userId)
-		{
-			var product = await context.Products.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id);
-			if (product is null) return false;
+    public Task<ICollection<CartViewModel>> GetArchive() =>
+        _archiveQueries.GetArchive();
 
-			var user = await context.Users.FirstOrDefaultAsync(x => x.Id == userId);
-			if (user is null) return false;
+    public Task<IReadOnlyCollection<ArchivedOrderSummary>>
+        GetArchivedOrders() =>
+        _archiveQueries.GetArchivedOrders();
 
-			var cart = await GetOrCreateCartAsync(user.Id);
+    public Task<ArchivedOrderDetails?> GetArchivedOrder(
+        Guid cartId) =>
+        _archiveQueries.GetArchivedOrder(cartId);
 
-			var cartProduct = await context.CartProducts
-				.FirstOrDefaultAsync(x => x.CartId == cart.Id && x.ProductId == product.Id);
+    public Task<bool> UpdateOrderStatus(
+        Guid cartId,
+        string status) =>
+        _archiveMutations.UpdateOrderStatus(
+            cartId,
+            status);
 
-			if (cartProduct is null)
-			{
-				cartProduct = new CartProduct
-				{
-					CartId = cart.Id,
-					ProductId = product.Id,
-					Quantity = 1
-				};
-				await context.CartProducts.AddAsync(cartProduct);
-			}
-			else
-			{
-				cartProduct.Quantity++;
-			}
+    public Task<bool> AddProduct(
+        string id,
+        string userId) =>
+        _activeCart.AddProduct(id, userId);
 
-			cart.UpdatedOn = DateTime.UtcNow;
-			await context.SaveChangesAsync();
-			return true;
-		}
+    public Task<bool> IncreaseProduct(
+        string id,
+        string userId) =>
+        _activeCart.IncreaseProduct(id, userId);
 
-		public async Task ArchiveCart(User user)
-		{
-			if (user is null) return;
+    public Task<bool> DecreaseProduct(
+        string id,
+        string userId) =>
+        _activeCart.DecreaseProduct(id, userId);
 
-			var cart = await context.Carts.FirstOrDefaultAsync(x => x.UserId == user.Id && !x.IsArchived);
-			if (cart is null) return;
+    public Task<bool> RemoveProduct(
+        string id,
+        string userId) =>
+        _activeCart.RemoveProduct(id, userId);
 
-			cart.IsArchived = true;
-			cart.OrderDate = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss");
-			cart.Status = OrderStatusCatalog.Pending;
-			cart.UpdatedOn = DateTime.UtcNow;
+    public Task ArchiveCart(User user) =>
+        _archiveMutations.ArchiveCart(user);
 
-			var newCart = new Cart
-			{
-				Id = Guid.NewGuid(),
-				UserId = user.Id,
-				Status = OrderStatusCatalog.Pending,
-				UpdatedOn = DateTime.UtcNow
-			};
-
-			await context.Carts.AddAsync(newCart);
-			await context.SaveChangesAsync();
-		}
-
-		public async Task CleanCart(User user)
-		{
-			if (user is null) return;
-
-			var cart = await context.Carts.FirstOrDefaultAsync(c => c.UserId == user.Id && !c.IsArchived);
-			if (cart is null) return;
-
-			var products = await context.CartProducts
-				.Where(x => x.CartId == cart.Id)
-				.ToListAsync();
-
-			if (products.Count > 0)
-				context.CartProducts.RemoveRange(products);
-
-			cart.UpdatedOn = DateTime.UtcNow;
-
-			await context.SaveChangesAsync();
-		}
-
-		public async Task<bool> IncreaseProduct(string id, string userId)
-		{
-			var user = await context.Users.FirstOrDefaultAsync(x => x.Id == userId);
-			if (user is null) return false;
-
-			var cart = await context.Carts.FirstOrDefaultAsync(x => x.UserId == user.Id && !x.IsArchived);
-			if (cart is null) return false;
-
-			var cartProduct = await context.CartProducts
-				.FirstOrDefaultAsync(x => x.CartId == cart.Id && x.ProductId == id);
-
-			if (cartProduct is null) return false;
-
-			cartProduct.Quantity++;
-			cart.UpdatedOn = DateTime.UtcNow;
-
-			await context.SaveChangesAsync();
-			return true;
-		}
-
-		public async Task<bool> DecreaseProduct(string id, string userId)
-		{
-			var user = await context.Users.FirstOrDefaultAsync(x => x.Id == userId);
-			if (user is null) return false;
-
-			var cart = await context.Carts.FirstOrDefaultAsync(x => x.UserId == user.Id && !x.IsArchived);
-			if (cart is null) return false;
-
-			var cartProduct = await context.CartProducts
-				.FirstOrDefaultAsync(x => x.CartId == cart.Id && x.ProductId == id);
-
-			if (cartProduct is null) return false;
-
-			if (cartProduct.Quantity > 1)
-			{
-				cartProduct.Quantity--;
-			}
-			else
-			{
-				context.CartProducts.Remove(cartProduct);
-			}
-
-			cart.UpdatedOn = DateTime.UtcNow;
-			await context.SaveChangesAsync();
-			return true;
-		}
-
-		public async Task<bool> RemoveProduct(string id, string userId)
-		{
-			var user = await context.Users.FirstOrDefaultAsync(x => x.Id == userId);
-			if (user is null) return false;
-
-			var cart = await context.Carts.FirstOrDefaultAsync(x => x.UserId == user.Id && !x.IsArchived);
-			if (cart is null) return false;
-
-			var cartProduct = await context.CartProducts
-				.FirstOrDefaultAsync(x => x.CartId == cart.Id && x.ProductId == id);
-
-			if (cartProduct is null) return false;
-
-			context.CartProducts.Remove(cartProduct);
-			cart.UpdatedOn = DateTime.UtcNow;
-
-			await context.SaveChangesAsync();
-			return true;
-		}
-
-		public async Task<ICollection<CartViewModel>> GetArchive()
-		{
-			var archive = await context.Carts
-				.AsNoTracking()
-				.Include(x => x.User)
-				.Include(x => x.CartProducts)
-					.ThenInclude(cp => cp.Product)
-				.Where(x => x.IsArchived)
-				.Select(x => new CartViewModel
-				{
-					Id = x.Id,
-					UserId = x.UserId,
-					User = x.User!,
-					CartProducts = x.CartProducts,
-					OrderDate = x.OrderDate ?? string.Empty,
-					Products = x.CartProducts.Select(cp => cp.Product!).Where(p => p != null!).ToList()
-				})
-				.OrderByDescending(x => x.OrderDate)
-				.ToListAsync();
-
-			return archive;
-		}
-
-		public async Task<IReadOnlyCollection<ArchivedOrderSummary>> GetArchivedOrders()
-		{
-			return await context.Carts
-				.AsNoTracking()
-				.Where(cart => cart.IsArchived)
-				.OrderByDescending(cart => cart.OrderDate)
-				.Select(cart => new ArchivedOrderSummary(
-					cart.Id,
-					cart.User.UserName ?? "Unknown",
-					cart.OrderDate ?? string.Empty,
-					string.IsNullOrWhiteSpace(cart.Status) ? OrderStatusCatalog.Pending : cart.Status))
-				.ToListAsync();
-		}
-
-		public async Task<ArchivedOrderDetails?> GetArchivedOrder(Guid cartId)
-		{
-			var cart = await context.Carts
-				.AsNoTracking()
-				.Include(x => x.User)
-				.Include(x => x.CartProducts)
-					.ThenInclude(cp => cp.Product)
-						.ThenInclude(product => product!.ThumbnailImage)
-				.FirstOrDefaultAsync(x => x.Id == cartId && x.IsArchived);
-
-			if (cart is null)
-				return null;
-
-			var items = cart.CartProducts
-				.Where(cp => cp.Product is not null)
-				.Select(cp => new ArchivedOrderItem(
-					cp.ProductId,
-					cp.Product!.Name,
-					cp.Quantity,
-					cp.Product.Price,
-					cp.Product.ThumbnailImage?.Url ?? string.Empty))
-				.ToArray();
-
-			return new ArchivedOrderDetails(
-				cart.Id,
-				cart.User?.UserName ?? "Unknown",
-				cart.OrderDate ?? string.Empty,
-				string.IsNullOrWhiteSpace(cart.Status) ? OrderStatusCatalog.Pending : cart.Status,
-				items,
-				items.Sum(item => item.Price * item.Quantity));
-		}
-
-		public async Task<bool> UpdateOrderStatus(Guid cartId, string status)
-		{
-			if (!OrderStatusCatalog.TryNormalize(status, out string normalizedStatus))
-				return false;
-
-			var cart = await context.Carts
-				.FirstOrDefaultAsync(x => x.Id == cartId && x.IsArchived);
-
-			if (cart is null)
-				return false;
-
-			cart.Status = normalizedStatus;
-			cart.UpdatedOn = DateTime.UtcNow;
-			await context.SaveChangesAsync();
-			return true;
-		}
-
-		public async Task<MyCartViewModel> GetCartById(Guid cartId)
-		{
-			var myCartProducts = await context.CartProducts
-				.Include(x => x.Product)
-				.Where(x => x.CartId == cartId)
-				.ToListAsync();
-
-			var vm = new MyCartViewModel
-			{
-				MyProducts = new List<ProductViewModel>(),
-				TotalPrice = 0m
-			};
-
-			if (myCartProducts.Count == 0)
-				return vm;
-
-			foreach (var cp in myCartProducts)
-			{
-				vm.MyProducts.Add(new ProductViewModel
-				{
-					Id = cp.ProductId,
-					Name = cp.Product?.Name ?? string.Empty,
-					Price = cp.Product?.Price ?? 0m,
-					Quantity = cp.Quantity,
-					CartId = cp.CartId,
-					Cart = null
-				});
-
-				vm.TotalPrice += (cp.Product?.Price ?? 0m) * cp.Quantity;
-			}
-
-			return vm;
-		}
-	}
+    public Task CleanCart(User user) =>
+        _activeCart.CleanCart(user);
 }
