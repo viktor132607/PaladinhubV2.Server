@@ -1,3 +1,6 @@
+using Microsoft.EntityFrameworkCore;
+using PaladinHubV2.Server.Data;
+using PaladinHubV2.Server.Domain.Services.Seo;
 using Npgsql;
 using PaladinHubV2.Server.API.Controllers.Content;
 
@@ -165,6 +168,29 @@ public sealed class SeoPostgresIntegrationTests
                 connection);
             await cleanup.ExecuteNonQueryAsync(Ct);
         }
+    }
+
+    [Fact]
+    public async Task SeoMutationLockUsesPostgresProvider()
+    {
+        string? connectionString = Environment.GetEnvironmentVariable(
+            "SEO_POSTGRES_CONNECTION");
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            Assert.Skip("Set SEO_POSTGRES_CONNECTION to run PostgreSQL integration tests.");
+            return;
+        }
+
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql(connectionString)
+            .Options;
+        await using var db = new AppDbContext(options);
+        await db.Database.OpenConnectionAsync(Ct);
+        await using var transaction = await db.Database.BeginTransactionAsync(Ct);
+
+        await new SeoMutationLock(db).AcquireAsync(Ct);
+
+        await transaction.RollbackAsync(Ct);
     }
 
     [Fact]

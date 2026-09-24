@@ -1,7 +1,6 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using PaladinHubV2.Server.Data;
 using PaladinHubV2.Server.Domain.Services.Seo;
 
 namespace PaladinHubV2.Server.API.Controllers.Content;
@@ -13,9 +12,9 @@ public sealed class SeoController : ControllerBase
 {
     private readonly SeoService _seo;
 
-    public SeoController(AppDbContext db)
+    public SeoController(SeoService seo)
     {
-        _seo = new SeoService(db);
+        _seo = seo;
     }
 
     public sealed record ChangeRequest(
@@ -104,9 +103,11 @@ public sealed class PublicSeoController : ControllerBase
     private readonly SeoService _seo;
     private readonly IConfiguration _configuration;
 
-    public PublicSeoController(AppDbContext db, IConfiguration configuration)
+    public PublicSeoController(
+        SeoService seo,
+        IConfiguration configuration)
     {
-        _seo = new SeoService(db);
+        _seo = seo;
         _configuration = configuration;
     }
 
