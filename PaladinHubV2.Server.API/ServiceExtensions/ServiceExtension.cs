@@ -256,7 +256,13 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 
 			services.AddScoped<ISpellbookService, SpellbookService>();
 			services.AddScoped<SpellAdminService>();
-			services.AddScoped<TalentPageService>();
+			services.AddScoped<ITalentPageContentReader, TalentPageContentReader>();
+			services.AddScoped<ITalentPageTreeSelector, TalentPageTreeSelector>();
+			services.AddScoped<ITalentPageModelFactory, TalentPageModelFactory>();
+			services.AddScoped<TalentPageService>(provider =>
+				new TalentPageService(
+					provider.GetRequiredService<ITalentPageModelFactory>(),
+					provider.GetRequiredService<ITalentPageTreeSelector>()));
 
 			services.AddScoped<IItemsService, ItemsService>();
 			services.AddScoped<ItemAdminService>();
