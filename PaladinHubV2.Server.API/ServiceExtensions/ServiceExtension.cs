@@ -267,6 +267,9 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 			services.AddScoped<IItemsService, ItemsService>();
 			services.AddScoped<ItemAdminService>();
 
+			services.AddScoped<ICartActiveService, CartActiveService>();
+			services.AddScoped<ICartArchiveQueryService, CartArchiveQueryService>();
+			services.AddScoped<ICartArchiveMutationService, CartArchiveMutationService>();
 			services.AddScoped<ICartService, CartService>();
 			services.AddScoped<ICartSessionRequestPolicy, CartSessionRequestPolicy>();
 			services.AddScoped<IAnonymousCartSessionService, AnonymousCartSessionService>();

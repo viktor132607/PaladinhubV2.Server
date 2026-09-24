@@ -87,6 +87,16 @@
     <Include>[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.TalentTrees.TalentPageService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.TalentTrees.TalentPageContentReader,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.TalentTrees.TalentPageModelFactory,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.TalentTrees.TalentPageTreeSelector</Include>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(CartRefactorCoverage)' == 'true'">
+    <CollectCoverage>true</CollectCoverage>
+    <CoverletOutputFormat>json</CoverletOutputFormat>
+    <CoverletOutput>$(MSBuildProjectDirectory)/coverage/cart-refactor.json</CoverletOutput>
+    <Threshold>100</Threshold>
+    <ThresholdType>line</ThresholdType>
+    <ThresholdStat>total</ThresholdStat>
+    <Include>[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Carts.CartService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Carts.CartActiveService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Carts.CartArchiveQueryService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Carts.CartArchiveMutationService</Include>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="coverlet.msbuild">

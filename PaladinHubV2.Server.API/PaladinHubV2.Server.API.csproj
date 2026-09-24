@@ -35,6 +35,7 @@
     <EmbeddedResource Include="../docs/localization-upgrade.sql" LogicalName="DatabaseUpgrades.Localization.sql" />
     <EmbeddedResource Include="../docs/templates-upgrade.sql" LogicalName="DatabaseUpgrades.Templates.sql" />
     <EmbeddedResource Include="../docs/pages-upgrade.sql" LogicalName="DatabaseUpgrades.Pages.sql" />
+    <EmbeddedResource Include="../docs/carts-upgrade.sql" LogicalName="DatabaseUpgrades.Carts.sql" />
     <EmbeddedResource Include="../docs/roles-permissions-upgrade.sql" LogicalName="DatabaseUpgrades.RolesPermissions.sql" />
     <ProjectReference Include="..\PaladinHubV2.Server.Data\PaladinHubV2.Server.Data.csproj" />
     <ProjectReference Include="..\PaladinHubV2.Server.Core\PaladinHubV2.Server.Core.csproj" />
