@@ -15,6 +15,19 @@ public sealed class DisciplineAdminService
     private readonly IDisciplineUsageGuard _usage;
     private readonly IDisciplineRevisionJournal _journal;
 
+    internal DisciplineAdminService(
+        AppDbContext db,
+        GameDataAssignmentService assignments)
+        : this(
+            db,
+            assignments,
+            new DisciplineAdminQueryService(db),
+            new DisciplineAdminValidator(db),
+            new DisciplineUsageGuard(db),
+            new DisciplineRevisionJournal(db))
+    {
+    }
+
     public DisciplineAdminService(
         AppDbContext db,
         GameDataAssignmentService assignments,
