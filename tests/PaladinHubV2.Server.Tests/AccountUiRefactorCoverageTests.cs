@@ -581,7 +581,7 @@ public sealed class AccountUiRefactorCoverageTests
             Assert.False(
                 store.TryResolveOwnedUpload(
                     "user-1",
-                    "/uploads/avatars/user-1/\\0bad.png",
+                    "/uploads/avatars/user-1/\0bad.png",
                     out _));
 
             Assert.True(
