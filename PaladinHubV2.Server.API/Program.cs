@@ -373,6 +373,7 @@ static async Task InitializeDatabaseAsync(
 	await ExecuteUpgradeAsync(database, "DatabaseUpgrades.Media.sql");
 	await ExecuteUpgradeAsync(database, "DatabaseUpgrades.Navigation.sql");
 	await ExecuteUpgradeAsync(database, "DatabaseUpgrades.Pages.sql");
+	await ExecuteUpgradeAsync(database, "DatabaseUpgrades.Carts.sql");
 	await ExecuteUpgradeAsync(database, "DatabaseUpgrades.Seo.sql");
 	await ExecuteUpgradeAsync(database, "DatabaseUpgrades.Templates.sql");
 	await ExecuteUpgradeAsync(database, "DatabaseUpgrades.Localization.sql");
