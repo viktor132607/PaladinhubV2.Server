@@ -249,7 +249,14 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 			services.AddScoped<MerchandiseService>();
 
 			services.AddScoped<IRoleService, RoleService>();
-			services.AddScoped(_ => AccessControlAdminService.ForPostgres(connectionString));
+			services.AddScoped(provider =>
+			{
+				AppDbContext database = provider.GetRequiredService<AppDbContext>();
+				string activeConnection = database.Database.GetConnectionString()
+					?? throw new InvalidOperationException(
+						"Access-control database connection is unavailable.");
+				return AccessControlAdminService.ForPostgres(activeConnection);
+			});
 			services.AddTransient<HolySectionService>();
 			services.AddTransient<ProtectionSectionService>();
 			services.AddTransient<RetributionSectionService>();
