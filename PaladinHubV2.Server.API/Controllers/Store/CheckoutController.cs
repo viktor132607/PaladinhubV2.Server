@@ -198,10 +198,10 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 				await _checkoutOrders.GetCartSnapshotAsync(user, cancellationToken);
 
 			state.Total = snapshot.Total;
-			_checkoutSession.SaveState(state);
 
 			if (state.Total <= 0m || snapshot.Items <= 0)
 			{
+				_checkoutSession.SaveState(state);
 				return BadRequest(new
 				{
 					message = "Your cart is empty.",
