@@ -47,6 +47,16 @@
     <Include>[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Accounts.AccountUiService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Accounts.AccountIdentityService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Accounts.AccountOverviewService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Accounts.AccountAvatarService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Accounts.PhysicalAccountAvatarStore,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Accounts.AccountProfileService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Accounts.AccountSecurityScorer,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Accounts.AccountRegionService</Include>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(CartSessionRefactorCoverage)' == 'true'">
+    <CollectCoverage>true</CollectCoverage>
+    <CoverletOutputFormat>json</CoverletOutputFormat>
+    <CoverletOutput>$(MSBuildProjectDirectory)/coverage/cart-session-refactor.json</CoverletOutput>
+    <Threshold>100</Threshold>
+    <ThresholdType>line</ThresholdType>
+    <ThresholdStat>total</ThresholdStat>
+    <Include>[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Carts.CartSessionService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Carts.CartSessionRequestPolicy,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Carts.AnonymousCartSessionService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Carts.PersistentCartSessionService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Carts.CartSessionLifecycleService</Include>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="coverlet.msbuild">
