@@ -70,5 +70,18 @@ jobs:
       - name: Run catalog model checks
         run: dotnet run --project tests/CatalogModelChecks/CatalogModelChecks.csproj --configuration Release --no-restore
 
+      - name: Enforce 100% SEO refactor line coverage
+        run: >
+          dotnet test --project tests/PaladinHubV2.Server.Tests/PaladinHubV2.Server.Tests.csproj
+          --configuration Release
+          --no-restore
+          --filter "FullyQualifiedName~Seo"
+          /p:CollectCoverage=true
+          /p:CoverletOutputFormat=json
+          /p:Threshold=100
+          /p:ThresholdType=line
+          /p:ThresholdStat=total
+          '/p:Include=[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Seo.SeoService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Seo.SeoTargetResolver,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Seo.SeoPublicSnapshotService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Seo.SeoMutationLock,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Seo.SeoRequestValidator,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Seo.SeoEntryMapper,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Seo.SeoRevisionFactory,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Seo.SeoUrlPolicy'
+
       - name: Run controller and PostgreSQL integration tests
         run: dotnet test --project tests/PaladinHubV2.Server.Tests/PaladinHubV2.Server.Tests.csproj --configuration Release --no-restore
