@@ -267,6 +267,13 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 			services.AddScoped<PaladinContentService>();
 
 			services.AddScoped<ITalentTreeAdminService, TalentTreeAdminService>();
+			services.AddScoped<IAccountIdentityService, AccountIdentityService>();
+			services.AddScoped<IAccountSecurityScorer, AccountSecurityScorer>();
+			services.AddScoped<IAccountRegionService, AccountRegionService>();
+			services.AddScoped<IAccountProfileService, AccountProfileService>();
+			services.AddSingleton<IAccountAvatarStore, PhysicalAccountAvatarStore>();
+			services.AddScoped<IAccountAvatarService, AccountAvatarService>();
+			services.AddScoped<IAccountOverviewService, AccountOverviewService>();
 			services.AddScoped<IAccountUiService, AccountUiService>();
 			services.AddScoped<AuthSessionService>();
 			services.AddScoped<AuthRegistrationService>();
