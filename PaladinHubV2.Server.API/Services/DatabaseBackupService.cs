@@ -1,92 +1,118 @@
-using System.ComponentModel;
-using System.Diagnostics;
-using System.Text;
-using Npgsql;
+using Microsoft.Extensions.Logging;
 
 namespace PaladinHubV2.Server.API.Services;
 
-public sealed record DatabaseBackupArtifact(string FilePath, string FileName);
-
 public sealed class DatabaseBackupService
 {
-    private const int CopyBufferSize = 128 * 1024;
-    private static readonly byte[] PgDumpMagic = Encoding.ASCII.GetBytes("PGDMP");
-
-    private readonly NpgsqlConnectionStringBuilder connection;
-    private readonly ILogger<DatabaseBackupService> logger;
-    private readonly SemaphoreSlim operationLock = new(1, 1);
+    private readonly IPostgresToolRunner _tools;
+    private readonly IDatabaseBackupFileStore _files;
+    private readonly IPgDumpArchiveValidator _validator;
+    private readonly IDatabasePoolManager _pools;
+    private readonly TimeProvider _timeProvider;
+    private readonly ILogger<DatabaseBackupService> _logger;
+    private readonly SemaphoreSlim _operationLock =
+        new(1, 1);
 
     public DatabaseBackupService(
         string connectionString,
         ILogger<DatabaseBackupService> logger)
+        : this(
+            new PostgresToolRunner(
+                connectionString,
+                new SystemExternalProcessExecutor(),
+                logger),
+            new PhysicalDatabaseBackupFileStore(),
+            new PgDumpArchiveValidator(),
+            new NpgsqlDatabasePoolManager(),
+            TimeProvider.System,
+            logger)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
-        ArgumentNullException.ThrowIfNull(logger);
-
-        connection = new NpgsqlConnectionStringBuilder(connectionString);
-        this.logger = logger;
-
-        if (string.IsNullOrWhiteSpace(connection.Host) ||
-            string.IsNullOrWhiteSpace(connection.Database) ||
-            string.IsNullOrWhiteSpace(connection.Username))
-        {
-            throw new InvalidOperationException(
-                "Database backup requires PostgreSQL host, database, and username configuration.");
-        }
     }
 
-    public async Task<DatabaseBackupArtifact> CreateBackupAsync(
-        CancellationToken cancellationToken = default)
+    public DatabaseBackupService(
+        IPostgresToolRunner tools,
+        IDatabaseBackupFileStore files,
+        IPgDumpArchiveValidator validator,
+        IDatabasePoolManager pools,
+        TimeProvider timeProvider,
+        ILogger<DatabaseBackupService> logger)
     {
-        await operationLock.WaitAsync(cancellationToken);
+        ArgumentNullException.ThrowIfNull(tools);
+        ArgumentNullException.ThrowIfNull(files);
+        ArgumentNullException.ThrowIfNull(validator);
+        ArgumentNullException.ThrowIfNull(pools);
+        ArgumentNullException.ThrowIfNull(timeProvider);
+        ArgumentNullException.ThrowIfNull(logger);
+
+        _tools = tools;
+        _files = files;
+        _validator = validator;
+        _pools = pools;
+        _timeProvider = timeProvider;
+        _logger = logger;
+    }
+
+    public async Task<DatabaseBackupArtifact>
+        CreateBackupAsync(
+            CancellationToken cancellationToken = default)
+    {
+        await _operationLock.WaitAsync(
+            cancellationToken);
+
         string? backupPath = null;
 
         try
         {
-            backupPath = CreateTemporaryPath("dump");
+            backupPath =
+                _files.CreateTemporaryPath("dump");
 
-            await RunPostgresToolAsync(
+            await _tools.RunAsync(
                 "pg_dump",
                 [
                     "--format=custom",
                     "--compress=9",
                     "--file",
-                    backupPath,
-                    connection.Database!
+                    backupPath
                 ],
                 "create the database backup",
                 cancellationToken);
 
-            await ValidatePgDumpHeaderAsync(backupPath, cancellationToken);
+            await _validator.ValidateAsync(
+                backupPath,
+                cancellationToken);
 
-            FileInfo backupFile = new(backupPath);
-            if (!backupFile.Exists || backupFile.Length == 0)
+            long backupSize =
+                _files.GetLength(backupPath);
+
+            if (backupSize == 0)
             {
                 throw new InvalidOperationException(
                     "PostgreSQL reported a successful backup, but the generated archive is empty.");
             }
 
             string downloadName =
-                $"paladinhub-full-database-{DateTime.UtcNow:yyyyMMdd-HHmmss}Z.dump";
+                $"paladinhub-full-database-{_timeProvider.GetUtcNow():yyyyMMdd-HHmmss}Z.dump";
 
-            logger.LogInformation(
+            _logger.LogInformation(
                 "Full PostgreSQL backup created successfully ({BackupSize} bytes).",
-                backupFile.Length);
+                backupSize);
 
-            return new DatabaseBackupArtifact(backupPath, downloadName);
+            return new DatabaseBackupArtifact(
+                backupPath,
+                downloadName);
         }
         catch
         {
             if (backupPath is not null)
             {
-                TryDelete(backupPath);
+                _files.TryDelete(backupPath);
             }
 
             throw;
         }
         finally
         {
-            operationLock.Release();
+            _operationLock.Release();
         }
     }
 
@@ -96,40 +122,39 @@ public sealed class DatabaseBackupService
     {
         ArgumentNullException.ThrowIfNull(archive);
 
-        await operationLock.WaitAsync(cancellationToken);
+        await _operationLock.WaitAsync(
+            cancellationToken);
+
         string? uploadedPath = null;
         string? sqlPath = null;
         string? resetPath = null;
 
         try
         {
-            uploadedPath = CreateTemporaryPath("dump");
+            uploadedPath =
+                _files.CreateTemporaryPath("dump");
 
-            await using (FileStream destination = new(
+            await _files.CopyToNewFileAsync(
+                archive,
                 uploadedPath,
-                FileMode.CreateNew,
-                FileAccess.Write,
-                FileShare.None,
-                CopyBufferSize,
-                FileOptions.Asynchronous | FileOptions.SequentialScan))
+                cancellationToken);
+
+            long backupSize =
+                _files.GetLength(uploadedPath);
+
+            if (backupSize == 0)
             {
-                await archive.CopyToAsync(
-                    destination,
-                    CopyBufferSize,
-                    cancellationToken);
+                throw new InvalidDataException(
+                    "The uploaded backup archive is empty.");
             }
 
-            FileInfo uploadedFile = new(uploadedPath);
-            if (uploadedFile.Length == 0)
-            {
-                throw new InvalidDataException("The uploaded backup archive is empty.");
-            }
-
-            await ValidatePgDumpHeaderAsync(uploadedPath, cancellationToken);
+            await _validator.ValidateAsync(
+                uploadedPath,
+                cancellationToken);
 
             try
             {
-                await RunPostgresToolAsync(
+                await _tools.RunAsync(
                     "pg_restore",
                     ["--list", uploadedPath],
                     "validate the uploaded database backup",
@@ -142,48 +167,80 @@ public sealed class DatabaseBackupService
                     ex);
             }
 
-            // Materialize and decompress the complete archive before touching the database.
-            sqlPath = CreateTemporaryPath("sql");
-            resetPath = CreateTemporaryPath("sql");
-            await RunPostgresToolAsync("pg_restore",
-                ["--clean", "--if-exists", "--no-owner", "--no-privileges", "--file", sqlPath, uploadedPath],
-                "read the complete database archive", cancellationToken);
-            await File.WriteAllTextAsync(resetPath, ResetDatabaseSql, cancellationToken);
-            NpgsqlConnection.ClearAllPools();
+            sqlPath =
+                _files.CreateTemporaryPath("sql");
+            resetPath =
+                _files.CreateTemporaryPath("sql");
+
+            await _tools.RunAsync(
+                "pg_restore",
+                [
+                    "--clean",
+                    "--if-exists",
+                    "--no-owner",
+                    "--no-privileges",
+                    "--file",
+                    sqlPath,
+                    uploadedPath
+                ],
+                "read the complete database archive",
+                cancellationToken);
+
+            await _files.WriteAllTextAsync(
+                resetPath,
+                ResetDatabaseSql,
+                cancellationToken);
+
+            _pools.Clear();
+
             try
             {
-                // Both files execute in ONE transaction. Remove objects created after the
-                // snapshot as well; pg_restore --clean alone leaves those objects behind.
-                await RunPostgresToolAsync("psql",
-                    ["--no-psqlrc", "--no-password", "--single-transaction",
-                     "--set=ON_ERROR_STOP=on", "--file", resetPath, "--file", sqlPath],
-                    "restore the database backup", cancellationToken);
+                await _tools.RunAsync(
+                    "psql",
+                    [
+                        "--no-psqlrc",
+                        "--no-password",
+                        "--single-transaction",
+                        "--set=ON_ERROR_STOP=on",
+                        "--file",
+                        resetPath,
+                        "--file",
+                        sqlPath
+                    ],
+                    "restore the database backup",
+                    cancellationToken);
             }
             finally
             {
-                NpgsqlConnection.ClearAllPools();
+                _pools.Clear();
             }
 
-            logger.LogWarning(
+            _logger.LogWarning(
                 "Full PostgreSQL database restore completed successfully from an uploaded archive ({BackupSize} bytes).",
-                uploadedFile.Length);
+                backupSize);
         }
         finally
         {
             if (uploadedPath is not null)
             {
-                TryDelete(uploadedPath);
+                _files.TryDelete(uploadedPath);
             }
 
-            if (sqlPath is not null) TryDelete(sqlPath);
-            if (resetPath is not null) TryDelete(resetPath);
-            operationLock.Release();
+            if (sqlPath is not null)
+            {
+                _files.TryDelete(sqlPath);
+            }
+
+            if (resetPath is not null)
+            {
+                _files.TryDelete(resetPath);
+            }
+
+            _operationLock.Release();
         }
     }
 
-    // Keep PostgreSQL system schemas and its built-in PL/pgSQL language. All application
-    // schemas, extensions and large objects are rebuilt from the unfiltered full dump.
-    private const string ResetDatabaseSql = """
+    internal const string ResetDatabaseSql = """
         SET LOCAL lock_timeout = '30s';
         SELECT pg_advisory_xact_lock(723480193);
         DO $reset$
@@ -196,196 +253,7 @@ public sealed class DatabaseBackupService
             LOOP EXECUTE format('DROP SCHEMA %I CASCADE', item.nspname); END LOOP;
             PERFORM lo_unlink(oid) FROM pg_largeobject_metadata;
         END $reset$;
-        -- pg_dump can omit the default public schema, assuming initdb created it.
         CREATE SCHEMA public;
         GRANT USAGE ON SCHEMA public TO PUBLIC;
         """;
-
-    private async Task RunPostgresToolAsync(
-        string executable,
-        IReadOnlyCollection<string> arguments,
-        string operation,
-        CancellationToken cancellationToken)
-    {
-        ProcessStartInfo startInfo = new()
-        {
-            FileName = executable,
-            RedirectStandardError = true,
-            RedirectStandardOutput = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-
-        foreach (string argument in arguments)
-        {
-            startInfo.ArgumentList.Add(argument);
-        }
-
-        ApplyPostgresEnvironment(startInfo);
-
-        using Process process = new() { StartInfo = startInfo };
-
-        try
-        {
-            if (!process.Start())
-            {
-                throw new InvalidOperationException(
-                    $"Unable to start {executable} while trying to {operation}.");
-            }
-        }
-        catch (Win32Exception ex)
-        {
-            throw new InvalidOperationException(
-                $"The PostgreSQL utility '{executable}' is not installed or is not available in PATH.",
-                ex);
-        }
-
-        Task standardOutputTask = process.StandardOutput.BaseStream.CopyToAsync(Stream.Null);
-        Task<string> standardErrorTask = process.StandardError.ReadToEndAsync();
-
-        try
-        {
-            await process.WaitForExitAsync(cancellationToken);
-        }
-        catch (OperationCanceledException)
-        {
-            TryKill(process);
-            await process.WaitForExitAsync(CancellationToken.None);
-            await Task.WhenAll(standardOutputTask, standardErrorTask);
-            throw;
-        }
-
-        await standardOutputTask;
-        string standardError = await standardErrorTask;
-
-        if (process.ExitCode != 0)
-        {
-            throw new PostgresToolException(
-                executable,
-                operation,
-                process.ExitCode,
-                standardError);
-        }
-
-        if (!string.IsNullOrWhiteSpace(standardError))
-        {
-            logger.LogDebug(
-                "{PostgresTool} completed while trying to {Operation}: {ToolOutput}",
-                executable,
-                operation,
-                standardError.Trim());
-        }
-
-        // pg_restore --list writes its table of contents to stdout. Reading it above is
-        // intentional so the process cannot block on a full output pipe.
-
-    }
-
-    private void ApplyPostgresEnvironment(ProcessStartInfo startInfo)
-    {
-        startInfo.Environment["PGCONNECT_TIMEOUT"] = "30";
-        startInfo.Environment["PGHOST"] = connection.Host;
-        startInfo.Environment["PGPORT"] = connection.Port.ToString();
-        startInfo.Environment["PGDATABASE"] = connection.Database;
-        startInfo.Environment["PGUSER"] = connection.Username;
-
-        if (!string.IsNullOrEmpty(connection.Password))
-        {
-            startInfo.Environment["PGPASSWORD"] = connection.Password;
-        }
-
-        string sslMode = connection.SslMode.ToString();
-        startInfo.Environment["PGSSLMODE"] = sslMode switch
-        {
-            "VerifyCA" => "verify-ca",
-            "VerifyFull" => "verify-full",
-            _ => sslMode.ToLowerInvariant()
-        };
-    }
-
-    private static async Task ValidatePgDumpHeaderAsync(
-        string filePath,
-        CancellationToken cancellationToken)
-    {
-        await using FileStream stream = new(
-            filePath,
-            FileMode.Open,
-            FileAccess.Read,
-            FileShare.Read,
-            PgDumpMagic.Length,
-            FileOptions.Asynchronous | FileOptions.SequentialScan);
-
-        byte[] header = new byte[PgDumpMagic.Length];
-        int totalRead = 0;
-
-        while (totalRead < header.Length)
-        {
-            int read = await stream.ReadAsync(
-                header.AsMemory(totalRead, header.Length - totalRead),
-                cancellationToken);
-
-            if (read == 0)
-            {
-                break;
-            }
-
-            totalRead += read;
-        }
-
-        if (totalRead != PgDumpMagic.Length || !header.SequenceEqual(PgDumpMagic))
-        {
-            throw new InvalidDataException(
-                "The file is not a PostgreSQL custom-format backup archive.");
-        }
-    }
-
-    private static string CreateTemporaryPath(string extension)
-    {
-        string fileName = $"paladinhub-db-{Guid.NewGuid():N}.{extension}";
-        return Path.Combine(Path.GetTempPath(), fileName);
-    }
-
-    private static void TryDelete(string filePath)
-    {
-        try
-        {
-            if (File.Exists(filePath))
-            {
-                File.Delete(filePath);
-            }
-        }
-        catch
-        {
-            // Temporary-file cleanup must never hide the original backup/restore result.
-        }
-    }
-
-    private static void TryKill(Process process)
-    {
-        try
-        {
-            if (!process.HasExited)
-            {
-                process.Kill(entireProcessTree: true);
-            }
-        }
-        catch
-        {
-            // Best-effort cancellation cleanup only.
-        }
-    }
-
-    private sealed class PostgresToolException(
-        string executable,
-        string operation,
-        int exitCode,
-        string standardError)
-        : InvalidOperationException(
-            $"{executable} failed to {operation} with exit code {exitCode}: " +
-            (string.IsNullOrWhiteSpace(standardError)
-                ? "No error details were returned by PostgreSQL."
-                : standardError.Trim()))
-    {
-    }
 }
-
