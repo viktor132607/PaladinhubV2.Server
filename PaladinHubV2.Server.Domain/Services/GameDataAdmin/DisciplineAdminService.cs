@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using PaladinHubV2.Server.Common.Models.GameData;
 using PaladinHubV2.Server.Data;
@@ -7,398 +6,312 @@ using PaladinHubV2.Server.Domain.Services.GameData;
 
 namespace PaladinHubV2.Server.Domain.Services.GameDataAdmin;
 
-public enum DisciplineAdminError
-{
-	None,
-	NotFound,
-	Stale,
-	Validation,
-	InUse,
-	RevisionNotFound,
-	DeletedRevision
-}
-
-public sealed record DisciplineAdminResult(
-	DisciplineAdminError Error,
-	GameDiscipline? Discipline = null,
-	string? Message = null);
-
 public sealed class DisciplineAdminService
 {
-	private readonly AppDbContext _db;
-	private readonly GameDataAssignmentService _assignments;
+    private readonly AppDbContext _db;
+    private readonly GameDataAssignmentService _assignments;
+    private readonly IDisciplineAdminQueryService _queries;
+    private readonly IDisciplineAdminValidator _validator;
+    private readonly IDisciplineUsageGuard _usage;
+    private readonly IDisciplineRevisionJournal _journal;
 
-	public DisciplineAdminService(
-		AppDbContext db,
-		GameDataAssignmentService assignments)
-	{
-		_db = db;
-		_assignments = assignments;
-	}
+    internal DisciplineAdminService(
+        AppDbContext db,
+        GameDataAssignmentService assignments)
+        : this(
+            db,
+            assignments,
+            new DisciplineAdminQueryService(db),
+            new DisciplineAdminValidator(db),
+            new DisciplineUsageGuard(db),
+            new DisciplineRevisionJournal(db))
+    {
+    }
 
-	public Task<List<DisciplineListItem>> ListAsync(
-		CancellationToken cancellationToken)
-	{
-		return _db.GameDisciplines
-			.AsNoTracking()
-			.OrderBy(item => item.SortOrder)
-			.ThenBy(item => item.Name)
-			.Select(item => new DisciplineListItem(
-				item.Id,
-				item.Name,
-				item.Description,
-				item.ParentId,
-				item.SortOrder,
-				item.IsArchived,
-				item.IsDeleted,
-				item.Version,
-				_db.Spells.Count(spell => spell.DisciplineId == item.Id) +
-				_db.Items.Count(product => product.DisciplineId == item.Id),
-				_db.GameDisciplines.Count(child =>
-					child.ParentId == item.Id && !child.IsDeleted)))
-			.ToListAsync(cancellationToken);
-	}
+    public DisciplineAdminService(
+        AppDbContext db,
+        GameDataAssignmentService assignments,
+        IDisciplineAdminQueryService queries,
+        IDisciplineAdminValidator validator,
+        IDisciplineUsageGuard usage,
+        IDisciplineRevisionJournal journal)
+    {
+        _db = db;
+        _assignments = assignments;
+        _queries = queries;
+        _validator = validator;
+        _usage = usage;
+        _journal = journal;
+    }
 
-	public Task<List<DisciplineRevision>> HistoryAsync(
-		int id,
-		CancellationToken cancellationToken)
-	{
-		return _db.DisciplineRevisions
-			.AsNoTracking()
-			.Where(revision => revision.DisciplineId == id)
-			.OrderByDescending(revision => revision.Version)
-			.ToListAsync(cancellationToken);
-	}
+    public Task<List<DisciplineListItem>> ListAsync(
+        CancellationToken cancellationToken) =>
+        _queries.ListAsync(cancellationToken);
 
-	public async Task<DisciplineAdminResult> CreateAsync(
-		DisciplineRequest request,
-		string actor,
-		CancellationToken cancellationToken)
-	{
-		await using var transaction =
-			await _assignments.BeginAsync(cancellationToken);
+    public Task<List<DisciplineRevision>> HistoryAsync(
+        int id,
+        CancellationToken cancellationToken) =>
+        _queries.HistoryAsync(id, cancellationToken);
 
-		var discipline = new GameDiscipline();
-		string? error = await ValidateAsync(
-			discipline.Id,
-			request,
-			cancellationToken);
+    public async Task<DisciplineAdminResult> CreateAsync(
+        DisciplineRequest request,
+        string actor,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction =
+            await _assignments.BeginAsync(cancellationToken);
 
-		if (error != null)
-		{
-			return new DisciplineAdminResult(
-				DisciplineAdminError.Validation,
-				Message: error);
-		}
+        var discipline = new GameDiscipline();
 
-		Apply(discipline, request);
-		_db.GameDisciplines.Add(discipline);
-		await _db.SaveChangesAsync(cancellationToken);
-		Record(discipline, "created", actor);
-		await _db.SaveChangesAsync(cancellationToken);
-		await transaction.CommitAsync(cancellationToken);
+        string? error = await _validator.ValidateAsync(
+            discipline.Id,
+            request,
+            cancellationToken);
 
-		return new DisciplineAdminResult(
-			DisciplineAdminError.None,
-			discipline);
-	}
+        if (error is not null)
+        {
+            return Validation(error);
+        }
 
-	public async Task<DisciplineAdminResult> UpdateAsync(
-		int id,
-		DisciplineRequest request,
-		string actor,
-		CancellationToken cancellationToken)
-	{
-		await using var transaction =
-			await _assignments.BeginAsync(cancellationToken);
+        Apply(discipline, request);
 
-		GameDiscipline? discipline =
-			await _db.GameDisciplines.SingleOrDefaultAsync(
-				item => item.Id == id && !item.IsDeleted,
-				cancellationToken);
+        _db.GameDisciplines.Add(discipline);
+        await _db.SaveChangesAsync(cancellationToken);
 
-		if (discipline == null)
-		{
-			return new DisciplineAdminResult(
-				DisciplineAdminError.NotFound);
-		}
+        _journal.Record(discipline, "created", actor);
+        await _db.SaveChangesAsync(cancellationToken);
 
-		if (request.Version != discipline.Version)
-		{
-			return new DisciplineAdminResult(
-				DisciplineAdminError.Stale);
-		}
+        await transaction.CommitAsync(cancellationToken);
 
-		string? error = await ValidateAsync(
-			id,
-			request,
-			cancellationToken);
+        return Success(discipline);
+    }
 
-		if (error != null)
-		{
-			return new DisciplineAdminResult(
-				DisciplineAdminError.Validation,
-				Message: error);
-		}
+    public async Task<DisciplineAdminResult> UpdateAsync(
+        int id,
+        DisciplineRequest request,
+        string actor,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction =
+            await _assignments.BeginAsync(cancellationToken);
 
-		string action =
-			discipline.IsArchived == request.IsArchived
-				? "updated"
-				: request.IsArchived
-					? "archived"
-					: "unarchived";
+        GameDiscipline? discipline =
+            await _db.GameDisciplines.SingleOrDefaultAsync(
+                item =>
+                    item.Id == id &&
+                    !item.IsDeleted,
+                cancellationToken);
 
-		Apply(discipline, request);
-		discipline.Version++;
-		Record(discipline, action, actor);
-		await _db.SaveChangesAsync(cancellationToken);
-		await transaction.CommitAsync(cancellationToken);
+        if (discipline is null)
+        {
+            return Error(DisciplineAdminError.NotFound);
+        }
 
-		return new DisciplineAdminResult(
-			DisciplineAdminError.None,
-			discipline);
-	}
+        if (request.Version != discipline.Version)
+        {
+            return Error(DisciplineAdminError.Stale);
+        }
 
-	public async Task<DisciplineAdminResult> DeleteAsync(
-		int id,
-		int version,
-		string actor,
-		CancellationToken cancellationToken)
-	{
-		await using var transaction =
-			await _assignments.BeginAsync(cancellationToken);
+        string? error = await _validator.ValidateAsync(
+            id,
+            request,
+            cancellationToken);
 
-		GameDiscipline? discipline =
-			await _db.GameDisciplines.SingleOrDefaultAsync(
-				item => item.Id == id && !item.IsDeleted,
-				cancellationToken);
+        if (error is not null)
+        {
+            return Validation(error);
+        }
 
-		if (discipline == null)
-		{
-			return new DisciplineAdminResult(
-				DisciplineAdminError.NotFound);
-		}
+        string action = ResolveUpdateAction(
+            discipline.IsArchived,
+            request.IsArchived);
 
-		if (version != discipline.Version)
-		{
-			return new DisciplineAdminResult(
-				DisciplineAdminError.Stale);
-		}
+        Apply(discipline, request);
+        discipline.Version++;
 
-		bool inUse =
-			await _db.GameDisciplines.AnyAsync(
-				item => item.ParentId == id && !item.IsDeleted,
-				cancellationToken) ||
-			await _db.Spells.AnyAsync(
-				spell => spell.DisciplineId == id,
-				cancellationToken) ||
-			await _db.Items.AnyAsync(
-				item => item.DisciplineId == id,
-				cancellationToken);
+        _journal.Record(discipline, action, actor);
 
-		if (inUse)
-		{
-			return new DisciplineAdminResult(
-				DisciplineAdminError.InUse,
-				Message:
-					"Move specializations and assigned records before deleting this entry, or archive it.");
-		}
+        await _db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
 
-		discipline.IsDeleted = true;
-		discipline.Version++;
-		Record(discipline, "deleted", actor);
-		await _db.SaveChangesAsync(cancellationToken);
-		await transaction.CommitAsync(cancellationToken);
+        return Success(discipline);
+    }
 
-		return new DisciplineAdminResult(DisciplineAdminError.None);
-	}
+    public async Task<DisciplineAdminResult> DeleteAsync(
+        int id,
+        int version,
+        string actor,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction =
+            await _assignments.BeginAsync(cancellationToken);
 
-	public async Task<DisciplineAdminResult> RestoreAsync(
-		int id,
-		RevisionRestoreRequest request,
-		string actor,
-		CancellationToken cancellationToken)
-	{
-		await using var transaction =
-			await _assignments.BeginAsync(cancellationToken);
+        GameDiscipline? discipline =
+            await _db.GameDisciplines.SingleOrDefaultAsync(
+                item =>
+                    item.Id == id &&
+                    !item.IsDeleted,
+                cancellationToken);
 
-		GameDiscipline? discipline =
-			await _db.GameDisciplines.SingleOrDefaultAsync(
-				item => item.Id == id,
-				cancellationToken);
+        if (discipline is null)
+        {
+            return Error(DisciplineAdminError.NotFound);
+        }
 
-		if (discipline == null)
-		{
-			return new DisciplineAdminResult(
-				DisciplineAdminError.NotFound);
-		}
+        if (version != discipline.Version)
+        {
+            return Error(DisciplineAdminError.Stale);
+        }
 
-		if (request.Version != discipline.Version)
-		{
-			return new DisciplineAdminResult(
-				DisciplineAdminError.Stale);
-		}
+        if (await _usage.IsInUseAsync(
+                id,
+                cancellationToken))
+        {
+            return new DisciplineAdminResult(
+                DisciplineAdminError.InUse,
+                Message:
+                    "Move specializations and assigned records before deleting this entry, or archive it.");
+        }
 
-		DisciplineRevision? revision =
-			await _db.DisciplineRevisions.SingleOrDefaultAsync(
-				item =>
-					item.Id == request.RevisionId &&
-					item.DisciplineId == id,
-				cancellationToken);
+        discipline.IsDeleted = true;
+        discipline.Version++;
 
-		if (revision == null)
-		{
-			return new DisciplineAdminResult(
-				DisciplineAdminError.RevisionNotFound);
-		}
+        _journal.Record(discipline, "deleted", actor);
 
-		GameDiscipline snapshot =
-			JsonSerializer.Deserialize<GameDiscipline>(
-				revision.Snapshot)!;
+        await _db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
 
-		if (snapshot.IsDeleted)
-		{
-			return new DisciplineAdminResult(
-				DisciplineAdminError.DeletedRevision,
-				Message: "Select a revision before deletion.");
-		}
+        return Error(DisciplineAdminError.None);
+    }
 
-		var restored = new DisciplineRequest(
-			snapshot.Name,
-			snapshot.Description,
-			snapshot.ParentId,
-			snapshot.SortOrder,
-			snapshot.IsArchived,
-			discipline.Version);
+    public async Task<DisciplineAdminResult> RestoreAsync(
+        int id,
+        RevisionRestoreRequest request,
+        string actor,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction =
+            await _assignments.BeginAsync(cancellationToken);
 
-		string? error = await ValidateAsync(
-			id,
-			restored,
-			cancellationToken);
+        GameDiscipline? discipline =
+            await _db.GameDisciplines.SingleOrDefaultAsync(
+                item => item.Id == id,
+                cancellationToken);
 
-		if (error != null)
-		{
-			return new DisciplineAdminResult(
-				DisciplineAdminError.Validation,
-				Message: error);
-		}
+        if (discipline is null)
+        {
+            return Error(DisciplineAdminError.NotFound);
+        }
 
-		Apply(discipline, restored);
-		discipline.IsDeleted = false;
-		discipline.Version++;
-		Record(discipline, "restored", actor);
-		await _db.SaveChangesAsync(cancellationToken);
-		await transaction.CommitAsync(cancellationToken);
+        if (request.Version != discipline.Version)
+        {
+            return Error(DisciplineAdminError.Stale);
+        }
 
-		return new DisciplineAdminResult(
-			DisciplineAdminError.None,
-			discipline);
-	}
+        DisciplineRevision? revision =
+            await _db.DisciplineRevisions.SingleOrDefaultAsync(
+                item =>
+                    item.Id == request.RevisionId &&
+                    item.DisciplineId == id,
+                cancellationToken);
 
-	private async Task<string?> ValidateAsync(
-		int id,
-		DisciplineRequest request,
-		CancellationToken cancellationToken)
-	{
-		if (string.IsNullOrWhiteSpace(request.Name))
-		{
-			return "Name is required.";
-		}
+        if (revision is null)
+        {
+            return Error(
+                DisciplineAdminError.RevisionNotFound);
+        }
 
-		List<GameDiscipline> disciplines =
-			await _db.GameDisciplines
-				.AsNoTracking()
-				.ToListAsync(cancellationToken);
+        GameDiscipline snapshot =
+            _journal.ReadSnapshot(revision);
 
-		if (disciplines.Any(item =>
-				item.Id != id &&
-				!item.IsDeleted &&
-				item.ParentId == request.ParentId &&
-				string.Equals(
-					item.Name,
-					request.Name.Trim(),
-					StringComparison.OrdinalIgnoreCase)))
-		{
-			return "A class or specialization with this name already exists under this class.";
-		}
+        if (snapshot.IsDeleted)
+        {
+            return new DisciplineAdminResult(
+                DisciplineAdminError.DeletedRevision,
+                Message:
+                    "Select a revision before deletion.");
+        }
 
-		if (request.ParentId is not null)
-		{
-			GameDiscipline? owner = disciplines.Find(item =>
-				item.Id == request.ParentId && !item.IsDeleted);
+        DisciplineRequest restored =
+            BuildRestoreRequest(
+                snapshot,
+                discipline.Version);
 
-			if (owner is null || owner.ParentId is not null)
-			{
-				return "A specialization must belong to a top-level class.";
-			}
+        string? error = await _validator.ValidateAsync(
+            id,
+            restored,
+            cancellationToken);
 
-			if (disciplines.Any(item =>
-					item.ParentId == id && !item.IsDeleted))
-			{
-				return "A class with specializations cannot become a specialization.";
-			}
-		}
+        if (error is not null)
+        {
+            return Validation(error);
+        }
 
-		var seen = new HashSet<int> { id };
-		int? parentId = request.ParentId;
+        Apply(discipline, restored);
+        discipline.IsDeleted = false;
+        discipline.Version++;
 
-		while (parentId is not null)
-		{
-			if (!seen.Add(parentId.Value))
-			{
-				return "A class cannot belong to itself or its specializations.";
-			}
+        _journal.Record(discipline, "restored", actor);
 
-			GameDiscipline? parent = disciplines.Find(item =>
-				item.Id == parentId && !item.IsDeleted);
+        await _db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
 
-			if (parent is null)
-			{
-				return "The class does not exist. Restore it first.";
-			}
+        return Success(discipline);
+    }
 
-			if (parent.IsArchived && !request.IsArchived)
-			{
-				return "An active specialization cannot belong to an archived class.";
-			}
+    internal static string ResolveUpdateAction(
+        bool wasArchived,
+        bool isArchived)
+    {
+        if (wasArchived == isArchived)
+        {
+            return "updated";
+        }
 
-			parentId = parent.ParentId;
-		}
+        return isArchived
+            ? "archived"
+            : "unarchived";
+    }
 
-		if (request.IsArchived && disciplines.Any(item =>
-				item.ParentId == id &&
-				!item.IsDeleted &&
-				!item.IsArchived))
-		{
-			return "Archive or move active specializations first.";
-		}
+    internal static DisciplineRequest BuildRestoreRequest(
+        GameDiscipline snapshot,
+        int currentVersion)
+    {
+        return new DisciplineRequest(
+            snapshot.Name,
+            snapshot.Description,
+            snapshot.ParentId,
+            snapshot.SortOrder,
+            snapshot.IsArchived,
+            currentVersion);
+    }
 
-		return null;
-	}
+    internal static void Apply(
+        GameDiscipline discipline,
+        DisciplineRequest request)
+    {
+        discipline.Name = request.Name.Trim();
+        discipline.Description =
+            request.Description?.Trim() ??
+            string.Empty;
+        discipline.ParentId = request.ParentId;
+        discipline.SortOrder = request.SortOrder;
+        discipline.IsArchived = request.IsArchived;
+    }
 
-	private static void Apply(
-		GameDiscipline discipline,
-		DisciplineRequest request)
-	{
-		discipline.Name = request.Name.Trim();
-		discipline.Description = request.Description?.Trim() ?? string.Empty;
-		discipline.ParentId = request.ParentId;
-		discipline.SortOrder = request.SortOrder;
-		discipline.IsArchived = request.IsArchived;
-	}
+    private static DisciplineAdminResult Success(
+        GameDiscipline discipline) =>
+        new(
+            DisciplineAdminError.None,
+            discipline);
 
-	private void Record(
-		GameDiscipline discipline,
-		string action,
-		string actor)
-	{
-		_db.DisciplineRevisions.Add(new DisciplineRevision
-		{
-			DisciplineId = discipline.Id,
-			Version = discipline.Version,
-			Action = action,
-			Actor = actor,
-			Snapshot = JsonSerializer.Serialize(discipline)
-		});
-	}
+    private static DisciplineAdminResult Validation(
+        string message) =>
+        new(
+            DisciplineAdminError.Validation,
+            Message: message);
+
+    private static DisciplineAdminResult Error(
+        DisciplineAdminError error) =>
+        new(error);
 }
