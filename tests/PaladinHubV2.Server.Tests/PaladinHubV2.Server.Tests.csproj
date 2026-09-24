@@ -67,6 +67,16 @@
     <Include>[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.DisciplineAdminService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.DisciplineAdminQueryService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.DisciplineAdminValidator,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.DisciplineUsageGuard,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.DisciplineRevisionJournal</Include>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(DatabaseBackupRefactorCoverage)' == 'true'">
+    <CollectCoverage>true</CollectCoverage>
+    <CoverletOutputFormat>json</CoverletOutputFormat>
+    <CoverletOutput>$(MSBuildProjectDirectory)/coverage/database-backup-refactor.json</CoverletOutput>
+    <Threshold>100</Threshold>
+    <ThresholdType>line</ThresholdType>
+    <ThresholdStat>total</ThresholdStat>
+    <Include>[PaladinHubV2.Server.API]PaladinHubV2.Server.API.Services.DatabaseBackupService,[PaladinHubV2.Server.API]PaladinHubV2.Server.API.Services.PostgresToolRunner,[PaladinHubV2.Server.API]PaladinHubV2.Server.API.Services.PhysicalDatabaseBackupFileStore,[PaladinHubV2.Server.API]PaladinHubV2.Server.API.Services.PgDumpArchiveValidator,[PaladinHubV2.Server.API]PaladinHubV2.Server.API.Services.NpgsqlDatabasePoolManager</Include>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="coverlet.msbuild">

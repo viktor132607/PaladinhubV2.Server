@@ -56,9 +56,29 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 					environment);
 
 			string connectionString = resolvedConnection.ConnectionString;
-            services.AddSingleton(provider => new PaladinHubV2.Server.API.Services.DatabaseBackupService(
-                connectionString,
-                provider.GetRequiredService<ILogger<PaladinHubV2.Server.API.Services.DatabaseBackupService>>()));
+            services.AddSingleton(TimeProvider.System);
+            services.AddSingleton<
+                PaladinHubV2.Server.API.Services.IExternalProcessExecutor,
+                PaladinHubV2.Server.API.Services.SystemExternalProcessExecutor>();
+            services.AddSingleton<
+                PaladinHubV2.Server.API.Services.IDatabaseBackupFileStore,
+                PaladinHubV2.Server.API.Services.PhysicalDatabaseBackupFileStore>();
+            services.AddSingleton<
+                PaladinHubV2.Server.API.Services.IPgDumpArchiveValidator,
+                PaladinHubV2.Server.API.Services.PgDumpArchiveValidator>();
+            services.AddSingleton<
+                PaladinHubV2.Server.API.Services.IDatabasePoolManager,
+                PaladinHubV2.Server.API.Services.NpgsqlDatabasePoolManager>();
+            services.AddSingleton<
+                PaladinHubV2.Server.API.Services.IPostgresToolRunner>(
+                provider => new PaladinHubV2.Server.API.Services.PostgresToolRunner(
+                    connectionString,
+                    provider.GetRequiredService<
+                        PaladinHubV2.Server.API.Services.IExternalProcessExecutor>(),
+                    provider.GetRequiredService<
+                        ILogger<PaladinHubV2.Server.API.Services.PostgresToolRunner>>()));
+            services.AddSingleton<
+                PaladinHubV2.Server.API.Services.DatabaseBackupService>();
 			bool isDevelopment = environment.IsDevelopment();
 			SameSiteMode cookieSameSite =
 				isDevelopment ? SameSiteMode.Lax : SameSiteMode.None;
