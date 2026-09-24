@@ -21,7 +21,7 @@ namespace PaladinHubV2.Server.Domain.Services.Checkout
 		string? PublishableKey = null,
 		string? PaymentIntentId = null,
 		decimal Amount = 0m,
-		string Currency = "USD");
+		string Currency = "EUR");
 
 	public sealed record CheckoutCardVerificationResult(
 		CheckoutCardPaymentError Error,
@@ -36,12 +36,14 @@ namespace PaladinHubV2.Server.Domain.Services.Checkout
 			string orderId,
 			decimal total,
 			CancellationToken cancellationToken);
+		Task<CheckoutCardSessionResult> CreateSessionAsync(string userId, string orderId, decimal total, string currency, CancellationToken cancellationToken);
 
 		Task<CheckoutCardVerificationResult> VerifyAsync(
 			string paymentIntentId,
 			string userId,
 			string orderId,
 			CancellationToken cancellationToken);
+		Task<CheckoutCardVerificationResult> VerifyAsync(string paymentIntentId, string userId, string orderId, string currency, CancellationToken cancellationToken);
 
 		bool AmountMatches(
 			decimal total,
@@ -51,7 +53,7 @@ namespace PaladinHubV2.Server.Domain.Services.Checkout
 	public sealed class CheckoutCardPaymentService :
 		ICheckoutCardPaymentService
 	{
-		private const string Currency = "USD";
+		private const string Currency = "EUR";
 		private readonly string _stripePublishableKey;
 
 		public CheckoutCardPaymentService(
@@ -74,7 +76,12 @@ namespace PaladinHubV2.Server.Domain.Services.Checkout
 				string orderId,
 				decimal total,
 				CancellationToken cancellationToken)
+			=> await CreateSessionAsync(userId, orderId, total, Currency, cancellationToken);
+
+		public async Task<CheckoutCardSessionResult> CreateSessionAsync(
+			string userId, string orderId, decimal total, string currency, CancellationToken cancellationToken)
 		{
+			if (currency is not ("EUR" or "USD")) return new CheckoutCardSessionResult(CheckoutCardPaymentError.CreateFailed);
 			long amountInCents =
 				ToMinorUnits(total);
 
@@ -82,7 +89,7 @@ namespace PaladinHubV2.Server.Domain.Services.Checkout
 				new PaymentIntentCreateOptions
 				{
 					Amount = amountInCents,
-					Currency = "usd",
+					Currency = currency.ToLowerInvariant(),
 
 					Description =
 						$"PaladinHub order {orderId}",
@@ -126,7 +133,7 @@ namespace PaladinHubV2.Server.Domain.Services.Checkout
 					_stripePublishableKey,
 					intent.Id,
 					total,
-					Currency);
+					currency);
 			}
 			catch (StripeException)
 			{
@@ -141,6 +148,10 @@ namespace PaladinHubV2.Server.Domain.Services.Checkout
 				string userId,
 				string orderId,
 				CancellationToken cancellationToken)
+			=> await VerifyAsync(paymentIntentId, userId, orderId, Currency, cancellationToken);
+
+		public async Task<CheckoutCardVerificationResult> VerifyAsync(
+			string paymentIntentId, string userId, string orderId, string currency, CancellationToken cancellationToken)
 		{
 			PaymentIntent paymentIntent;
 
@@ -175,7 +186,7 @@ namespace PaladinHubV2.Server.Domain.Services.Checkout
 
 			if (!string.Equals(
 					paymentIntent.Currency,
-					"usd",
+					currency,
 					StringComparison.OrdinalIgnoreCase))
 			{
 				return new CheckoutCardVerificationResult(

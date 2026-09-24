@@ -51,7 +51,9 @@ namespace PaladinHubV2.Server.Domain.Services.Checkout
 
 		public async Task<CheckoutCardSetupResult> PrepareAsync(
 			User user,
-			CancellationToken cancellationToken)
+			CancellationToken cancellationToken,
+			string currency = "EUR",
+			decimal usdPerEur = 0m)
 		{
 			ArgumentNullException.ThrowIfNull(user);
 
@@ -87,6 +89,8 @@ namespace PaladinHubV2.Server.Domain.Services.Checkout
 			}
 
 			state.Total = snapshot.Total;
+			state.Currency = currency == "USD" && usdPerEur > 0m ? "USD" : "EUR";
+			state.UsdPerEur = state.Currency == "USD" ? usdPerEur : 0m;
 
 			if (string.IsNullOrWhiteSpace(state.OrderId))
 			{
@@ -95,12 +99,12 @@ namespace PaladinHubV2.Server.Domain.Services.Checkout
 
 			_checkoutSession.SaveState(state);
 
-			CheckoutCardSessionResult paymentSession =
-				await _cardPayments.CreateSessionAsync(
-					user.Id,
-					state.OrderId,
-					state.Total,
-					cancellationToken);
+			decimal paymentAmount = state.Currency == "USD"
+				? decimal.Round(state.Total * state.UsdPerEur, 2, MidpointRounding.AwayFromZero)
+				: state.Total;
+			CheckoutCardSessionResult paymentSession = state.Currency == "USD"
+				? await _cardPayments.CreateSessionAsync(user.Id, state.OrderId, paymentAmount, "USD", cancellationToken)
+				: await _cardPayments.CreateSessionAsync(user.Id, state.OrderId, paymentAmount, cancellationToken);
 
 			if (paymentSession.Error ==
 				CheckoutCardPaymentError.MissingClientSecret)
@@ -121,7 +125,7 @@ namespace PaladinHubV2.Server.Domain.Services.Checkout
 				paymentSession.PublishableKey,
 				paymentSession.PaymentIntentId,
 				state.OrderId,
-				state.Total,
+				paymentAmount,
 				paymentSession.Currency);
 		}
 
@@ -164,12 +168,9 @@ namespace PaladinHubV2.Server.Domain.Services.Checkout
 					orderId);
 			}
 
-			CheckoutCardVerificationResult verification =
-				await _cardPayments.VerifyAsync(
-					paymentIntentId,
-					user.Id,
-					orderId,
-					cancellationToken);
+			CheckoutCardVerificationResult verification = state.Currency == "USD" && state.UsdPerEur > 0m
+				? await _cardPayments.VerifyAsync(paymentIntentId, user.Id, orderId, "USD", cancellationToken)
+				: await _cardPayments.VerifyAsync(paymentIntentId, user.Id, orderId, cancellationToken);
 
 			if (verification.Error != CheckoutCardPaymentError.None)
 			{
@@ -191,8 +192,11 @@ namespace PaladinHubV2.Server.Domain.Services.Checkout
 					orderId);
 			}
 
+			decimal expectedPayment = state.Currency == "USD" && state.UsdPerEur > 0m
+				? decimal.Round(snapshot.Total * state.UsdPerEur, 2, MidpointRounding.AwayFromZero)
+				: snapshot.Total;
 			if (!_cardPayments.AmountMatches(
-					snapshot.Total,
+					expectedPayment,
 					verification.Amount))
 			{
 				return new CheckoutCardFinalizeResult(

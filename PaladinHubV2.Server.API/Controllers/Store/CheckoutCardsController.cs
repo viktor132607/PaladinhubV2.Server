@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using PaladinHubV2.Server.Data.Entities;
 using PaladinHubV2.Server.Domain.Services;
 using PaladinHubV2.Server.Domain.Services.Checkout;
+using PaladinHubV2.Server.API.Services;
 
 namespace PaladinHubV2.Server.API.Controllers.Store
 {
@@ -18,17 +19,20 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 		private readonly CheckoutCardFlowService _cardFlow;
 		private readonly ICartStore? _cartStore;
 		private readonly ICheckoutSessionService? _checkoutSession;
+		private readonly EuroUsdRateService? _rates;
 
 		public CheckoutCardsController(
 			UserManager<User> userManager,
 			CheckoutCardFlowService cardFlow,
 			ICartStore? cartStore = null,
-			ICheckoutSessionService? checkoutSession = null)
+			ICheckoutSessionService? checkoutSession = null,
+			EuroUsdRateService? rates = null)
 		{
 			_userManager = userManager;
 			_cardFlow = cardFlow;
 			_cartStore = cartStore;
 			_checkoutSession = checkoutSession;
+			_rates = rates;
 		}
 
 		[HttpGet("Card")]
@@ -36,7 +40,8 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 			NoStore = true,
 			Location = ResponseCacheLocation.None)]
 		public async Task<IActionResult> Card(
-			CancellationToken cancellationToken)
+			CancellationToken cancellationToken,
+			[FromQuery] string currency = "EUR")
 		{
 			User? user = await _userManager.GetUserAsync(User);
 
@@ -67,8 +72,17 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 				}
 			}
 
-			CheckoutCardSetupResult result =
-				await _cardFlow.PrepareAsync(user, cancellationToken);
+			decimal usdPerEur = 0m;
+			if (currency.Equals("USD", StringComparison.OrdinalIgnoreCase))
+			{
+				if (_rates is null) return StatusCode(503, new { message = "USD payments are temporarily unavailable." });
+				try { usdPerEur = (await _rates.GetAsync(cancellationToken)).UsdPerEur; }
+				catch (Exception error) when (error is HttpRequestException or TaskCanceledException or InvalidDataException or System.Xml.XmlException)
+				{ return StatusCode(503, new { message = "USD payments are temporarily unavailable." }); }
+			}
+
+			CheckoutCardSetupResult result = await _cardFlow.PrepareAsync(user, cancellationToken,
+				usdPerEur > 0m ? "USD" : "EUR", usdPerEur);
 
 			IActionResult? errorResult = MapError(result.Error);
 			if (errorResult != null)

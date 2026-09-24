@@ -60,8 +60,8 @@ namespace PaladinHubV2.Server.Domain.Services.Checkout
 
 	public sealed class CheckoutOrderService : ICheckoutOrderService
 	{
-		private const string Currency = "USD";
-		private const string Region = "US";
+		private const string Currency = "EUR";
+		private const string Region = "EU";
 
 		private readonly ICartSessionService _cartSession;
 		private readonly IProductService _productService;
@@ -267,9 +267,10 @@ namespace PaladinHubV2.Server.Domain.Services.Checkout
 						$"Order {state.OrderId} " +
 						$"({state.PaymentMethod})",
 
-					Amount = state.Total,
-					Currency = Currency,
-					Region = Region,
+					Amount = state.PaymentMethod == PaladinHub.Models.Checkout.PaymentMethod.Card && state.Currency == "USD" && state.UsdPerEur > 0m
+						? decimal.Round(state.Total * state.UsdPerEur, 2, MidpointRounding.AwayFromZero) : state.Total,
+					Currency = state.PaymentMethod == PaladinHub.Models.Checkout.PaymentMethod.Card && state.Currency == "USD" ? "USD" : Currency,
+					Region = state.PaymentMethod == PaladinHub.Models.Checkout.PaymentMethod.Card && state.Currency == "USD" ? "US" : Region,
 					Status = status,
 					ExternalId = state.OrderId,
 					Type = TransactionType.Purchase

@@ -162,7 +162,7 @@ public sealed class CheckoutCardsControllerTests
                 "pk_test_1",
                 "pi_1",
                 57.25m,
-                "USD"));
+                "EUR"));
 
         OkObjectResult ok = Assert.IsType<OkObjectResult>(
             await context.Controller.Card(CancellationToken.None));
@@ -172,7 +172,7 @@ public sealed class CheckoutCardsControllerTests
         Assert.Equal("pi_1", ReadString(ok.Value, "paymentIntentId"));
         Assert.Equal(state.OrderId, ReadString(ok.Value, "orderId"));
         Assert.Equal(57.25m, ReadDecimal(ok.Value, "amount"));
-        Assert.Equal("USD", ReadString(ok.Value, "currency"));
+        Assert.Equal("EUR", ReadString(ok.Value, "currency"));
         Assert.Equal(57.25m, state.Total);
         Assert.False(string.IsNullOrWhiteSpace(state.OrderId));
         context.Session.Verify(service => service.SaveState(state), Times.Once);
@@ -184,6 +184,29 @@ public sealed class CheckoutCardsControllerTests
             .Setup(service => service.GetCartSnapshotAsync(user, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new CheckoutCartSnapshot(2, total));
         context.Payments.SetupGet(service => service.IsConfigured).Returns(true);
+    }
+
+    [Fact]
+    public async Task CardFlow_UsdLocksRateAndChargesConvertedAmount()
+    {
+        var user = User();
+        var state = CardState();
+        var context = CreateContext(user, state);
+        SetupReadyCart(context, user, 50m);
+        context.Payments.Setup(service => service.CreateSessionAsync(
+                user.Id, It.IsAny<string>(), 60m, "USD", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CheckoutCardSessionResult(CheckoutCardPaymentError.None, "secret", "pk", "pi", 60m, "USD"));
+
+        var flow = new CheckoutCardFlowService(context.Session.Object, context.Orders.Object, context.Payments.Object);
+        CheckoutCardSetupResult result = await flow.PrepareAsync(user, CancellationToken.None, "USD", 1.2m);
+
+        Assert.Equal(CheckoutCardFlowError.None, result.Error);
+        Assert.Equal(60m, result.Amount);
+        Assert.Equal("USD", result.Currency);
+        Assert.Equal("USD", state.Currency);
+        Assert.Equal(1.2m, state.UsdPerEur);
+        context.Payments.Verify(service => service.CreateSessionAsync(
+            user.Id, It.IsAny<string>(), 60m, "USD", It.IsAny<CancellationToken>()), Times.Once);
     }
 
     private static TestContext CreateContext(User? currentUser, CheckoutState state)
