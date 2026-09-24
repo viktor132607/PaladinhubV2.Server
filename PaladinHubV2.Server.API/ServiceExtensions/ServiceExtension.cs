@@ -305,6 +305,18 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 			services.AddScoped<
 				PaladinHubV2.Server.Domain.Services.GameData.GameDataAssignmentService>();
 			services.AddScoped<
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.IDisciplineAdminQueryService,
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.DisciplineAdminQueryService>();
+			services.AddScoped<
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.IDisciplineAdminValidator,
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.DisciplineAdminValidator>();
+			services.AddScoped<
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.IDisciplineUsageGuard,
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.DisciplineUsageGuard>();
+			services.AddScoped<
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.IDisciplineRevisionJournal,
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.DisciplineRevisionJournal>();
+			services.AddScoped<
 				PaladinHubV2.Server.Domain.Services.GameDataAdmin.DisciplineAdminService>();
 
 			services.AddScoped<ICartStore, MemoryCartStore>();
