@@ -13,7 +13,7 @@ public sealed class ProductService : IProductService
     private readonly IProductMutationService _mutations;
     private readonly IProductReviewService _reviews;
 
-    public ProductService(AppDbContext db)
+    internal ProductService(AppDbContext db)
         : this(
             new ProductCatalogQueryService(db),
             new ProductSearchService(db),
