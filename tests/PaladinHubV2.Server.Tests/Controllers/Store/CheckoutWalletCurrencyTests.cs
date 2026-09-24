@@ -16,11 +16,11 @@ public sealed class CheckoutWalletCurrencyTests
     [Theory]
     [InlineData(105, true)]
     [InlineData(120, false)]
-    public async Task Review_ComparesUsdWalletAgainstConvertedEurTotal(decimal balance, bool insufficient)
+    public async Task Review_ComparesUsdWalletAgainstConvertedEurTotal(int balance, bool insufficient)
     {
         using var db = Context();
         var wallet = new Mock<IWalletService>();
-        wallet.Setup(x => x.GetBalanceAsync("user-1")).ReturnsAsync(balance);
+        wallet.Setup(x => x.GetBalanceAsync("user-1")).ReturnsAsync((decimal)balance);
         var rates = new Mock<IEuroUsdRateProvider>();
         rates.Setup(x => x.GetUsdPerEurAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1.2m);
         var orders = Service(db, wallet, rates);
@@ -28,7 +28,7 @@ public sealed class CheckoutWalletCurrencyTests
 
         CheckoutPaymentReview review = await orders.GetPaymentReviewAsync(new User { Id = "user-1" }, state, 100m);
 
-        Assert.Equal(balance, review.WalletBalance);
+        Assert.Equal((decimal)balance, review.WalletBalance);
         Assert.Equal(1.2m, state.UsdPerEur);
         Assert.Equal(insufficient, review.PaymentError == "Insufficient wallet balance.");
     }
