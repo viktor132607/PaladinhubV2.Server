@@ -347,6 +347,11 @@ public sealed class DisciplineAdminRefactorCoverageTests
             .ReturnsAsync("bad")
             .ReturnsAsync((string?)null);
 
+        Assert.NotNull(
+            new DisciplineAdminService(
+                db,
+                new GameDataAssignmentService(db)));
+
         DisciplineAdminService service =
             CreateService(
                 db,
