@@ -87,6 +87,7 @@ namespace PaladinHubV2.Server.API.Controllers.Content.PageBuilder
 		{
 			bool deleted = await _pages.DeleteAsync(
 				id,
+				User.Identity?.Name ?? "admin",
 				cancellationToken);
 
 			if (!deleted)
