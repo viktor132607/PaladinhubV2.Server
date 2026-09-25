@@ -445,6 +445,28 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 						provider.GetRequiredService<PaladinHubV2.Server.Domain.Services.GameDataAdmin.IPatchRevisionJournal>()));
 
 			services.AddScoped<
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.ITagAdminQueryService,
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.TagAdminQueryService>();
+			services.AddScoped<
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.ITagAdminValidator,
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.TagAdminValidator>();
+			services.AddScoped<
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.ITagUsageGuard,
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.TagUsageGuard>();
+			services.AddScoped<
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.ITagRevisionJournal,
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.TagRevisionJournal>();
+			services.AddScoped<
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.TagAdminService>(provider =>
+					new PaladinHubV2.Server.Domain.Services.GameDataAdmin.TagAdminService(
+						provider.GetRequiredService<PaladinHubV2.Server.Data.AppDbContext>(),
+						provider.GetRequiredService<PaladinHubV2.Server.Domain.Services.GameData.GameDataAssignmentService>(),
+						provider.GetRequiredService<PaladinHubV2.Server.Domain.Services.GameDataAdmin.ITagAdminQueryService>(),
+						provider.GetRequiredService<PaladinHubV2.Server.Domain.Services.GameDataAdmin.ITagAdminValidator>(),
+						provider.GetRequiredService<PaladinHubV2.Server.Domain.Services.GameDataAdmin.ITagUsageGuard>(),
+						provider.GetRequiredService<PaladinHubV2.Server.Domain.Services.GameDataAdmin.ITagRevisionJournal>()));
+
+			services.AddScoped<
 				PaladinHubV2.Server.Domain.Services.GameDataAdmin.IDisciplineAdminQueryService,
 				PaladinHubV2.Server.Domain.Services.GameDataAdmin.DisciplineAdminQueryService>();
 			services.AddScoped<
