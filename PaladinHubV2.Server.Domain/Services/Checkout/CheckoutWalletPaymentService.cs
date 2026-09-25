@@ -15,8 +15,8 @@ public sealed class CheckoutWalletPaymentService :
         "Insufficient wallet balance.";
 
     private readonly IWalletService _wallet;
-    private readonly ICheckoutOrderTransactionService _transactions;
     private readonly IEuroUsdRateProvider? _rates;
+    private readonly ICheckoutOrderTransactionService _transactions;
 
     public CheckoutWalletPaymentService(
         IWalletService wallet,
@@ -36,8 +36,7 @@ public sealed class CheckoutWalletPaymentService :
         decimal? walletBalance = null;
         string? paymentError = null;
 
-        if (state.PaymentMethod !=
-            PaymentMethod.Balance)
+        if (state.PaymentMethod != PaymentMethod.Balance)
         {
             return new CheckoutPaymentReview(
                 walletBalance,
