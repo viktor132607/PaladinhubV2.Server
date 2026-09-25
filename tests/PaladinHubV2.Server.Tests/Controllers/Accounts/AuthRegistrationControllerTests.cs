@@ -15,6 +15,36 @@ namespace PaladinHubV2.Server.Tests.Controllers.Accounts;
 
 public sealed class AuthRegistrationControllerTests
 {
+    [Fact]
+    public async Task UsernameAvailability_TrimsInputAndChecksIdentityStore()
+    {
+        var (controller, users, _, _) = CreateController();
+        users.Setup(manager => manager.FindByNameAsync("taken-user"))
+            .ReturnsAsync(new User { UserName = "taken-user" });
+        users.Setup(manager => manager.FindByNameAsync("new-user"))
+            .ReturnsAsync((User?)null);
+
+        OkObjectResult taken = Assert.IsType<OkObjectResult>(
+            await controller.UsernameAvailability(" taken-user "));
+        OkObjectResult available = Assert.IsType<OkObjectResult>(
+            await controller.UsernameAvailability("new-user"));
+
+        Assert.False((bool)taken.Value!.GetType().GetProperty("available")!.GetValue(taken.Value)!);
+        Assert.True((bool)available.Value!.GetType().GetProperty("available")!.GetValue(available.Value)!);
+        users.Verify(manager => manager.FindByNameAsync("taken-user"), Times.Once);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("   ")]
+    [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
+    public async Task UsernameAvailability_RejectsEmptyInput(string? username)
+    {
+        var (controller, users, _, _) = CreateController();
+        Assert.IsType<BadRequestObjectResult>(await controller.UsernameAvailability(username));
+        users.Verify(manager => manager.FindByNameAsync(It.IsAny<string>()), Times.Never);
+    }
+
     [Theory]
     [InlineData("   ", "valid-user", "valid@example.com", "Full name is required.")]
     [InlineData("Valid User", "   ", "valid@example.com", "Username is required.")]

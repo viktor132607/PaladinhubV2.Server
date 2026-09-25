@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using PaladinHub.Models.Auth;
 using PaladinHubV2.Server.Data.Entities;
 using PaladinHubV2.Server.Domain.Services.Accounts;
@@ -28,6 +29,21 @@ public sealed class AuthRegistrationController : ControllerBase
 		_registrationService =
 			new AuthRegistrationService(userManager, roleManager);
 		_sessionService = sessionService;
+	}
+
+	[AllowAnonymous]
+	[HttpGet("username-availability")]
+	[EnableRateLimiting("account-security")]
+	[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+	public async Task<IActionResult> UsernameAvailability([FromQuery] string? username)
+	{
+		string candidate = username?.Trim() ?? string.Empty;
+		if (candidate.Length is < 1 or > 100)
+		{
+			return BadRequest(new AuthErrorResponse("Enter a valid username."));
+		}
+
+		return Ok(new { available = await _userManager.FindByNameAsync(candidate) is null });
 	}
 
 	[AllowAnonymous]
