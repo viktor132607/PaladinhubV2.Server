@@ -374,6 +374,9 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 
 			services.AddScoped<IPageService, PageService>();
 			services.AddScoped<PageBuilderAdminService>();
+			services.AddScoped<IPageManagementQueryService, PageManagementQueryService>();
+			services.AddScoped<IPageManagementRequestPolicy, PageManagementRequestPolicy>();
+			services.AddScoped<IPageManagementMutationService, PageManagementMutationService>();
 			services.AddScoped<PageManagementService>();
 			services.AddScoped<TalentPageAdminService>();
 			services.AddScoped<IJsonLayoutValidator, JsonLayoutValidator>();
