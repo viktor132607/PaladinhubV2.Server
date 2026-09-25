@@ -137,6 +137,16 @@
     <Include>[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.MediaAdminService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.MediaAdminQueryService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.MediaAdminValidator,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.MediaUsageCounter,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.MediaRevisionJournal</Include>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(BannerStoreRefactorCoverage)' == 'true'">
+    <CollectCoverage>true</CollectCoverage>
+    <CoverletOutputFormat>json</CoverletOutputFormat>
+    <CoverletOutput>$(MSBuildProjectDirectory)/coverage/banner-store-refactor.json</CoverletOutput>
+    <Threshold>100</Threshold>
+    <ThresholdType>line</ThresholdType>
+    <ThresholdStat>total</ThresholdStat>
+    <Include>[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Banners.BannerRules,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Banners.BannerStoreService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Banners.PostgresBannerRepository,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Banners.BannerStore</Include>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="coverlet.msbuild">

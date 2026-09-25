@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using PaladinHubV2.Server.API.Controllers.Content;
 using PaladinHubV2.Server.Data;
 using PaladinHubV2.Server.Domain.Services.Banners;
+using Moq;
 namespace PaladinHubV2.Server.Tests;
 public sealed class BannerRulesTests
 {
@@ -22,7 +23,11 @@ public sealed class BannerRulesTests
     public async Task CreateRejectsInvalidInputBeforeOpeningDatabase()
     {
         await using var db=new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
-        var result=await new BannersController(db).Create(Request() with {Title=""},TestContext.Current.CancellationToken);
+        var service = new BannerStoreService(
+            Mock.Of<IBannerRepository>(),
+            new BannerRules(),
+            TimeProvider.System);
+        var result=await new BannersController(service).Create(Request() with {Title=""},TestContext.Current.CancellationToken);
         Assert.IsType<BadRequestObjectResult>(result);
     }
     [Fact]

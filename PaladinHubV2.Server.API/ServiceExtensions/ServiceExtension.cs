@@ -333,6 +333,15 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 			services.AddScoped<CheckoutCardFlowService>();
 
 			services.AddScoped<
+				PaladinHubV2.Server.Domain.Services.Banners.IBannerRules,
+				PaladinHubV2.Server.Domain.Services.Banners.BannerRules>();
+			services.AddScoped<
+				PaladinHubV2.Server.Domain.Services.Banners.IBannerRepository,
+				PaladinHubV2.Server.Domain.Services.Banners.PostgresBannerRepository>();
+			services.AddScoped<
+				PaladinHubV2.Server.Domain.Services.Banners.BannerStoreService>();
+
+			services.AddScoped<
 				PaladinHubV2.Server.Domain.Services.GameData.GameDataAssignmentService>();
 			services.AddScoped<
 				PaladinHubV2.Server.Domain.Services.GameDataAdmin.ICategoryAdminQueryService,
