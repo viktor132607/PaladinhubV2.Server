@@ -1,6 +1,8 @@
 using PaladinHub.Models.Checkout;
+using PaladinHubV2.Server.Data;
 using PaladinHubV2.Server.Data.Entities;
 using PaladinHubV2.Server.Domain.Services.Carts;
+using PaladinHubV2.Server.Domain.Services.Products;
 using PaladinHubV2.Server.Domain.Services.Wallet;
 
 namespace PaladinHubV2.Server.Domain.Services.Checkout;
@@ -8,34 +10,47 @@ namespace PaladinHubV2.Server.Domain.Services.Checkout;
 public sealed class CheckoutOrderService :
     ICheckoutOrderService
 {
-    private const string RateUnavailableMessage =
-        "Wallet payments are temporarily unavailable while the exchange rate cannot be verified.";
-
-    private readonly ICheckoutCartSnapshotProvider _cartSnapshot;
-    private readonly ICheckoutWalletReviewService _walletReview;
-    private readonly ICheckoutTransactionStore _transactions;
-    private readonly IWalletService _wallet;
-    private readonly ICartSessionService _cartSession;
+    private readonly ICheckoutCartCoordinator _cart;
+    private readonly ICheckoutWalletPaymentService _walletPayments;
+    private readonly ICheckoutOrderTransactionService _transactions;
 
     public CheckoutOrderService(
-        ICheckoutCartSnapshotProvider cartSnapshot,
-        ICheckoutWalletReviewService walletReview,
-        ICheckoutTransactionStore transactions,
+        ICartSessionService cartSession,
+        IProductService productService,
         IWalletService wallet,
-        ICartSessionService cartSession)
+        AppDbContext db,
+        IEuroUsdRateProvider? rates = null)
     {
-        _cartSnapshot = cartSnapshot;
-        _walletReview = walletReview;
+        _transactions =
+            new CheckoutOrderTransactionService(db);
+
+        _cart =
+            new CheckoutCartCoordinator(
+                cartSession,
+                productService);
+
+        _walletPayments =
+            new CheckoutWalletPaymentService(
+                wallet,
+                _transactions,
+                rates);
+    }
+
+    public CheckoutOrderService(
+        ICheckoutCartCoordinator cart,
+        ICheckoutWalletPaymentService walletPayments,
+        ICheckoutOrderTransactionService transactions)
+    {
+        _cart = cart;
+        _walletPayments = walletPayments;
         _transactions = transactions;
-        _wallet = wallet;
-        _cartSession = cartSession;
     }
 
     public Task<CheckoutCartSnapshot> GetCartSnapshotAsync(
         User user,
         CancellationToken cancellationToken)
     {
-        return _cartSnapshot.GetAsync(
+        return _cart.GetSnapshotAsync(
             user,
             cancellationToken);
     }
@@ -45,7 +60,7 @@ public sealed class CheckoutOrderService :
         CheckoutState state,
         decimal total)
     {
-        return _walletReview.ReviewAsync(
+        return _walletPayments.ReviewAsync(
             user,
             state,
             total);
@@ -84,7 +99,7 @@ public sealed class CheckoutOrderService :
                 cancellationToken);
         }
 
-        await ArchiveCartAsync(
+        await _cart.ArchiveAsync(
             user,
             cancellationToken);
 
@@ -107,40 +122,20 @@ public sealed class CheckoutOrderService :
 
         if (!alreadyProcessed)
         {
-            if (_walletReview.RequiresVerifiedRate &&
-                state.UsdPerEur <= 0m)
-            {
-                return new CheckoutOrderPlacementResult(
-                    false,
-                    RateUnavailableMessage);
-            }
-
-            decimal walletTotal =
-                _walletReview.GetChargeAmount(
-                    state);
-
-            try
-            {
-                Guid transactionId =
-                    await _wallet.ChargeAsync(
-                        user.Id,
-                        walletTotal,
-                        $"Order {orderId} (Wallet)");
-
-                await _transactions.AttachOrderMetadataAsync(
-                    transactionId,
+            CheckoutOrderPlacementResult charge =
+                await _walletPayments.ChargeAsync(
+                    user,
+                    state,
                     orderId,
                     cancellationToken);
-            }
-            catch (InvalidOperationException)
+
+            if (!charge.Success)
             {
-                return new CheckoutOrderPlacementResult(
-                    false,
-                    "Insufficient wallet balance.");
+                return charge;
             }
         }
 
-        await ArchiveCartAsync(
+        await _cart.ArchiveAsync(
             user,
             cancellationToken);
 
@@ -159,7 +154,7 @@ public sealed class CheckoutOrderService :
             TransactionStatus.Complete,
             cancellationToken);
 
-        await ArchiveCartAsync(
+        await _cart.ArchiveAsync(
             user,
             cancellationToken);
     }
@@ -168,7 +163,7 @@ public sealed class CheckoutOrderService :
         User user,
         CancellationToken cancellationToken)
     {
-        return _cartSession.ArchiveAndClear(
+        return _cart.ArchiveAsync(
             user,
             cancellationToken);
     }
