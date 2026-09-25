@@ -10,9 +10,17 @@ namespace PaladinHubV2.Server.Domain.Services.Checkout;
 public sealed class CheckoutOrderService :
     ICheckoutOrderService
 {
-    private readonly ICheckoutCartCoordinator _cart;
-    private readonly ICheckoutWalletPaymentService _walletPayments;
-    private readonly ICheckoutOrderTransactionService _transactions;
+    private const string RateUnavailableMessage =
+        "Wallet payments are temporarily unavailable while the exchange rate cannot be verified.";
+
+    private const string InsufficientBalanceMessage =
+        "Insufficient wallet balance.";
+
+    private readonly ICheckoutCartSnapshotProvider _snapshots;
+    private readonly ICheckoutWalletReviewService _walletReview;
+    private readonly ICheckoutTransactionStore _transactions;
+    private readonly IWalletService _wallet;
+    private readonly ICartSessionService _cartSession;
 
     public CheckoutOrderService(
         ICartSessionService cartSession,
@@ -20,37 +28,38 @@ public sealed class CheckoutOrderService :
         IWalletService wallet,
         AppDbContext db,
         IEuroUsdRateProvider? rates = null)
-    {
-        _transactions =
-            new CheckoutOrderTransactionService(db);
-
-        _cart =
-            new CheckoutCartCoordinator(
+        : this(
+            new CheckoutCartSnapshotProvider(
                 cartSession,
-                productService);
-
-        _walletPayments =
-            new CheckoutWalletPaymentService(
+                productService),
+            new CheckoutWalletReviewService(
                 wallet,
-                _transactions,
-                rates);
+                rates),
+            new CheckoutTransactionStore(db),
+            wallet,
+            cartSession)
+    {
     }
 
     public CheckoutOrderService(
-        ICheckoutCartCoordinator cart,
-        ICheckoutWalletPaymentService walletPayments,
-        ICheckoutOrderTransactionService transactions)
+        ICheckoutCartSnapshotProvider snapshots,
+        ICheckoutWalletReviewService walletReview,
+        ICheckoutTransactionStore transactions,
+        IWalletService wallet,
+        ICartSessionService cartSession)
     {
-        _cart = cart;
-        _walletPayments = walletPayments;
+        _snapshots = snapshots;
+        _walletReview = walletReview;
         _transactions = transactions;
+        _wallet = wallet;
+        _cartSession = cartSession;
     }
 
     public Task<CheckoutCartSnapshot> GetCartSnapshotAsync(
         User user,
         CancellationToken cancellationToken)
     {
-        return _cart.GetSnapshotAsync(
+        return _snapshots.GetAsync(
             user,
             cancellationToken);
     }
@@ -60,7 +69,7 @@ public sealed class CheckoutOrderService :
         CheckoutState state,
         decimal total)
     {
-        return _walletPayments.ReviewAsync(
+        return _walletReview.ReviewAsync(
             user,
             state,
             total);
@@ -99,7 +108,7 @@ public sealed class CheckoutOrderService :
                 cancellationToken);
         }
 
-        await _cart.ArchiveAsync(
+        await ArchiveCartAsync(
             user,
             cancellationToken);
 
@@ -122,20 +131,40 @@ public sealed class CheckoutOrderService :
 
         if (!alreadyProcessed)
         {
-            CheckoutOrderPlacementResult charge =
-                await _walletPayments.ChargeAsync(
-                    user,
-                    state,
+            if (_walletReview.RequiresVerifiedRate &&
+                state.UsdPerEur <= 0m)
+            {
+                return new CheckoutOrderPlacementResult(
+                    false,
+                    RateUnavailableMessage);
+            }
+
+            decimal walletTotal =
+                _walletReview.GetChargeAmount(
+                    state);
+
+            try
+            {
+                Guid transactionId =
+                    await _wallet.ChargeAsync(
+                        user.Id,
+                        walletTotal,
+                        $"Order {orderId} (Wallet)");
+
+                await _transactions.AttachOrderMetadataAsync(
+                    transactionId,
                     orderId,
                     cancellationToken);
-
-            if (!charge.Success)
+            }
+            catch (InvalidOperationException)
             {
-                return charge;
+                return new CheckoutOrderPlacementResult(
+                    false,
+                    InsufficientBalanceMessage);
             }
         }
 
-        await _cart.ArchiveAsync(
+        await ArchiveCartAsync(
             user,
             cancellationToken);
 
@@ -154,7 +183,7 @@ public sealed class CheckoutOrderService :
             TransactionStatus.Complete,
             cancellationToken);
 
-        await _cart.ArchiveAsync(
+        await ArchiveCartAsync(
             user,
             cancellationToken);
     }
@@ -163,7 +192,7 @@ public sealed class CheckoutOrderService :
         User user,
         CancellationToken cancellationToken)
     {
-        return _cart.ArchiveAsync(
+        return _cartSession.ArchiveAndClear(
             user,
             cancellationToken);
     }
