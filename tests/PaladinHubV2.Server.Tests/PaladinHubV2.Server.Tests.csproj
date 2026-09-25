@@ -167,6 +167,16 @@
     <Include>[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.PatchAdminService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.PatchAdminQueryService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.PatchAdminValidator,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.PatchUsageGuard,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.PatchRevisionJournal</Include>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(TagAdminRefactorCoverage)' == 'true'">
+    <CollectCoverage>true</CollectCoverage>
+    <CoverletOutputFormat>json</CoverletOutputFormat>
+    <CoverletOutput>$(MSBuildProjectDirectory)/coverage/tag-admin-refactor.json</CoverletOutput>
+    <Threshold>100</Threshold>
+    <ThresholdType>line</ThresholdType>
+    <ThresholdStat>total</ThresholdStat>
+    <Include>[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.TagAdminService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.TagAdminQueryService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.TagAdminValidator,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.TagUsageGuard,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.TagRevisionJournal</Include>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="coverlet.msbuild">
