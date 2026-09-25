@@ -239,7 +239,10 @@ public sealed class RaritiesControllerTests
 
     private static RaritiesController CreateController(AppDbContext db, string actor = "actor-1")
     {
-        var controller = new RaritiesController(db, new GameDataAssignmentService(db));
+        var controller = new RaritiesController(
+            new PaladinHubV2.Server.Domain.Services.GameDataAdmin.RarityAdminService(
+                db,
+                new GameDataAssignmentService(db)));
         ControllerTestSupport.Attach(controller, ControllerTestSupport.CreateHttpContext(actor));
         return controller;
     }
