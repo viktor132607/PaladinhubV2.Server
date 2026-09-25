@@ -107,6 +107,16 @@
     <Include>[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.CategoryAdminService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.CategoryAdminQueryService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.CategoryAdminValidator,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.CategoryUsageGuard,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.CategoryRevisionJournal</Include>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(PageManagementRefactorCoverage)' == 'true'">
+    <CollectCoverage>true</CollectCoverage>
+    <CoverletOutputFormat>json</CoverletOutputFormat>
+    <CoverletOutput>$(MSBuildProjectDirectory)/coverage/page-management-refactor.json</CoverletOutput>
+    <Threshold>100</Threshold>
+    <ThresholdType>line</ThresholdType>
+    <ThresholdStat>total</ThresholdStat>
+    <Include>[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.PageBuilder.PageManagementService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.PageBuilder.PageManagementQueryService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.PageBuilder.PageManagementRequestPolicy,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.PageBuilder.PageManagementMutationService</Include>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="coverlet.msbuild">
