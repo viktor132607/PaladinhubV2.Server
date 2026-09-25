@@ -423,6 +423,28 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 						provider.GetRequiredService<PaladinHubV2.Server.Domain.Services.GameDataAdmin.IMediaUsageCounter>(),
 						provider.GetRequiredService<PaladinHubV2.Server.Domain.Services.GameDataAdmin.IMediaRevisionJournal>()));
 			services.AddScoped<
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.IPatchAdminQueryService,
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.PatchAdminQueryService>();
+			services.AddScoped<
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.IPatchAdminValidator,
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.PatchAdminValidator>();
+			services.AddScoped<
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.IPatchUsageGuard,
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.PatchUsageGuard>();
+			services.AddScoped<
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.IPatchRevisionJournal,
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.PatchRevisionJournal>();
+			services.AddScoped<
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.PatchAdminService>(provider =>
+					new PaladinHubV2.Server.Domain.Services.GameDataAdmin.PatchAdminService(
+						provider.GetRequiredService<PaladinHubV2.Server.Data.AppDbContext>(),
+						provider.GetRequiredService<PaladinHubV2.Server.Domain.Services.GameData.GameDataAssignmentService>(),
+						provider.GetRequiredService<PaladinHubV2.Server.Domain.Services.GameDataAdmin.IPatchAdminQueryService>(),
+						provider.GetRequiredService<PaladinHubV2.Server.Domain.Services.GameDataAdmin.IPatchAdminValidator>(),
+						provider.GetRequiredService<PaladinHubV2.Server.Domain.Services.GameDataAdmin.IPatchUsageGuard>(),
+						provider.GetRequiredService<PaladinHubV2.Server.Domain.Services.GameDataAdmin.IPatchRevisionJournal>()));
+
+			services.AddScoped<
 				PaladinHubV2.Server.Domain.Services.GameDataAdmin.IDisciplineAdminQueryService,
 				PaladinHubV2.Server.Domain.Services.GameDataAdmin.DisciplineAdminQueryService>();
 			services.AddScoped<
