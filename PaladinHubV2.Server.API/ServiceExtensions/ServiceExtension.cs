@@ -342,6 +342,18 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 				PaladinHubV2.Server.Domain.Services.Banners.BannerStoreService>();
 
 			services.AddScoped<
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.IDatabaseBrowseScopeResolver,
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.DatabaseBrowseScopeResolver>();
+			services.AddScoped<
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.IDatabaseSpellBrowseQuery,
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.DatabaseSpellBrowseQuery>();
+			services.AddScoped<
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.IDatabaseItemBrowseQuery,
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.DatabaseItemBrowseQuery>();
+			services.AddScoped<
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.DatabaseBrowserService>();
+
+			services.AddScoped<
 				PaladinHubV2.Server.Domain.Services.GameData.GameDataAssignmentService>();
 			services.AddScoped<
 				PaladinHubV2.Server.Domain.Services.GameDataAdmin.ICategoryAdminQueryService,
