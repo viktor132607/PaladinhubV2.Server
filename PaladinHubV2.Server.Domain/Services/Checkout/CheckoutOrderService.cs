@@ -1,4 +1,3 @@
-using Microsoft.EntityFrameworkCore;
 using PaladinHub.Models.Checkout;
 using PaladinHubV2.Server.Data;
 using PaladinHubV2.Server.Data.Entities;
@@ -6,322 +5,166 @@ using PaladinHubV2.Server.Domain.Services.Carts;
 using PaladinHubV2.Server.Domain.Services.Products;
 using PaladinHubV2.Server.Domain.Services.Wallet;
 
-namespace PaladinHubV2.Server.Domain.Services.Checkout
+namespace PaladinHubV2.Server.Domain.Services.Checkout;
+
+public sealed class CheckoutOrderService :
+    ICheckoutOrderService
 {
-	public readonly record struct CheckoutCartSnapshot(
-		int Items,
-		decimal Total);
+    private readonly ICheckoutCartCoordinator _cart;
+    private readonly ICheckoutWalletPaymentService _walletPayments;
+    private readonly ICheckoutOrderTransactionService _transactions;
 
-	public sealed record CheckoutPaymentReview(
-		decimal? WalletBalance,
-		string? PaymentError);
+    public CheckoutOrderService(
+        ICartSessionService cartSession,
+        IProductService productService,
+        IWalletService wallet,
+        AppDbContext db,
+        IEuroUsdRateProvider? rates = null)
+    {
+        _transactions =
+            new CheckoutOrderTransactionService(db);
 
-	public sealed record CheckoutOrderPlacementResult(
-		bool Success,
-		string? ErrorMessage = null);
+        _cart =
+            new CheckoutCartCoordinator(
+                cartSession,
+                productService);
 
-	public interface ICheckoutOrderService
-	{
-		Task<CheckoutCartSnapshot> GetCartSnapshotAsync(
-			User user,
-			CancellationToken cancellationToken);
+        _walletPayments =
+            new CheckoutWalletPaymentService(
+                wallet,
+                _transactions,
+                rates);
+    }
 
-		Task<CheckoutPaymentReview> GetPaymentReviewAsync(
-			User user,
-			CheckoutState state,
-			decimal total);
+    public CheckoutOrderService(
+        ICheckoutCartCoordinator cart,
+        ICheckoutWalletPaymentService walletPayments,
+        ICheckoutOrderTransactionService transactions)
+    {
+        _cart = cart;
+        _walletPayments = walletPayments;
+        _transactions = transactions;
+    }
 
-		Task<bool> OrderTransactionExistsAsync(
-			string userId,
-			string orderId,
-			CancellationToken cancellationToken);
+    public Task<CheckoutCartSnapshot> GetCartSnapshotAsync(
+        User user,
+        CancellationToken cancellationToken)
+    {
+        return _cart.GetSnapshotAsync(
+            user,
+            cancellationToken);
+    }
 
-		Task<CheckoutOrderPlacementResult> PlaceCashOnDeliveryAsync(
-			User user,
-			CheckoutState state,
-			string orderId,
-			CancellationToken cancellationToken);
+    public Task<CheckoutPaymentReview> GetPaymentReviewAsync(
+        User user,
+        CheckoutState state,
+        decimal total)
+    {
+        return _walletPayments.ReviewAsync(
+            user,
+            state,
+            total);
+    }
 
-		Task<CheckoutOrderPlacementResult> PlaceWalletAsync(
-			User user,
-			CheckoutState state,
-			string orderId,
-			CancellationToken cancellationToken);
+    public Task<bool> OrderTransactionExistsAsync(
+        string userId,
+        string orderId,
+        CancellationToken cancellationToken)
+    {
+        return _transactions.ExistsAsync(
+            userId,
+            orderId,
+            cancellationToken);
+    }
 
-		Task CompleteCardOrderAsync(
-			User user,
-			CheckoutState state,
-			CancellationToken cancellationToken);
+    public async Task<CheckoutOrderPlacementResult>
+        PlaceCashOnDeliveryAsync(
+            User user,
+            CheckoutState state,
+            string orderId,
+            CancellationToken cancellationToken)
+    {
+        bool alreadyProcessed =
+            await _transactions.ExistsAsync(
+                user.Id,
+                orderId,
+                cancellationToken);
 
-		Task ArchiveCartAsync(
-			User user,
-			CancellationToken cancellationToken);
-	}
+        if (!alreadyProcessed)
+        {
+            await _transactions.LogPurchaseAsync(
+                user,
+                state,
+                TransactionStatus.Pending,
+                cancellationToken);
+        }
 
-	public sealed class CheckoutOrderService : ICheckoutOrderService
-	{
-		private const string Currency = "EUR";
-		private const string Region = "EU";
+        await _cart.ArchiveAsync(
+            user,
+            cancellationToken);
 
-		private readonly ICartSessionService _cartSession;
-		private readonly IProductService _productService;
-		private readonly IWalletService _wallet;
-		private readonly AppDbContext _db;
-		private readonly IEuroUsdRateProvider? _rates;
+        return new CheckoutOrderPlacementResult(
+            true);
+    }
 
-		public CheckoutOrderService(
-			ICartSessionService cartSession,
-			IProductService productService,
-			IWalletService wallet,
-			AppDbContext db,
-			IEuroUsdRateProvider? rates = null)
-		{
-			_cartSession = cartSession;
-			_productService = productService;
-			_wallet = wallet;
-			_db = db;
-			_rates = rates;
-		}
+    public async Task<CheckoutOrderPlacementResult>
+        PlaceWalletAsync(
+            User user,
+            CheckoutState state,
+            string orderId,
+            CancellationToken cancellationToken)
+    {
+        bool alreadyProcessed =
+            await _transactions.ExistsAsync(
+                user.Id,
+                orderId,
+                cancellationToken);
 
-		public async Task<CheckoutCartSnapshot> GetCartSnapshotAsync(
-			User user,
-			CancellationToken cancellationToken)
-		{
-			await _cartSession.SyncRedisToPersistent(
-				user,
-				cancellationToken);
+        if (!alreadyProcessed)
+        {
+            CheckoutOrderPlacementResult charge =
+                await _walletPayments.ChargeAsync(
+                    user,
+                    state,
+                    orderId,
+                    cancellationToken);
 
-			var cart =
-				await _productService.GetMyProducts(user);
+            if (!charge.Success)
+            {
+                return charge;
+            }
+        }
 
-			return new CheckoutCartSnapshot(
-				cart.MyProducts?.Count ?? 0,
-				cart.TotalPrice);
-		}
+        await _cart.ArchiveAsync(
+            user,
+            cancellationToken);
 
-		public async Task<CheckoutPaymentReview> GetPaymentReviewAsync(
-			User user,
-			CheckoutState state,
-			decimal total)
-		{
-			decimal? walletBalance = null;
-			string? paymentError = null;
+        return new CheckoutOrderPlacementResult(
+            true);
+    }
 
-			if (state.PaymentMethod ==
-				PaladinHub.Models.Checkout.PaymentMethod.Balance)
-			{
-				walletBalance =
-					await _wallet.GetBalanceAsync(user.Id);
-				state.UsdPerEur = 0m;
+    public async Task CompleteCardOrderAsync(
+        User user,
+        CheckoutState state,
+        CancellationToken cancellationToken)
+    {
+        await _transactions.LogPurchaseAsync(
+            user,
+            state,
+            TransactionStatus.Complete,
+            cancellationToken);
 
-				try
-				{
-					state.UsdPerEur = _rates is null ? 0m : await _rates.GetUsdPerEurAsync(CancellationToken.None);
-				}
-				catch (Exception error) when (error is HttpRequestException or TaskCanceledException or InvalidDataException or System.Xml.XmlException)
-				{
-					paymentError = "Wallet payments are temporarily unavailable while the exchange rate cannot be verified.";
-				}
-				if (_rates is not null && state.UsdPerEur <= 0m)
-					paymentError = "Wallet payments are temporarily unavailable while the exchange rate cannot be verified.";
-				decimal walletTotal = state.UsdPerEur > 0m ? decimal.Round(total * state.UsdPerEur, 2, MidpointRounding.AwayFromZero) : total;
-				if (paymentError is null && walletBalance < walletTotal)
-				{
-					paymentError =
-						"Insufficient wallet balance.";
-				}
-			}
+        await _cart.ArchiveAsync(
+            user,
+            cancellationToken);
+    }
 
-			return new CheckoutPaymentReview(
-				walletBalance,
-				paymentError);
-		}
-
-		public async Task<bool> OrderTransactionExistsAsync(
-			string userId,
-			string orderId,
-			CancellationToken cancellationToken)
-		{
-			return await _db.Transactions
-				.AsNoTracking()
-				.AnyAsync(
-					transaction =>
-						transaction.UserId == userId &&
-						transaction.ExternalId == orderId,
-					cancellationToken);
-		}
-
-		public async Task<CheckoutOrderPlacementResult>
-			PlaceCashOnDeliveryAsync(
-				User user,
-				CheckoutState state,
-				string orderId,
-				CancellationToken cancellationToken)
-		{
-			bool alreadyProcessed =
-				await OrderTransactionExistsAsync(
-					user.Id,
-					orderId,
-					cancellationToken);
-
-			if (!alreadyProcessed)
-			{
-				await LogPurchaseTransactionAsync(
-					user,
-					state,
-					TransactionStatus.Pending,
-					cancellationToken);
-			}
-
-			await ArchiveCartAsync(
-				user,
-				cancellationToken);
-
-			return new CheckoutOrderPlacementResult(true);
-		}
-
-		public async Task<CheckoutOrderPlacementResult>
-			PlaceWalletAsync(
-				User user,
-				CheckoutState state,
-				string orderId,
-				CancellationToken cancellationToken)
-		{
-			bool alreadyProcessed =
-				await OrderTransactionExistsAsync(
-					user.Id,
-					orderId,
-					cancellationToken);
-
-			if (!alreadyProcessed)
-			{
-				if (_rates is not null && state.UsdPerEur <= 0m)
-					return new CheckoutOrderPlacementResult(false, "Wallet payments are temporarily unavailable while the exchange rate cannot be verified.");
-				decimal walletTotal = state.UsdPerEur > 0m
-					? decimal.Round(state.Total * state.UsdPerEur, 2, MidpointRounding.AwayFromZero) : state.Total;
-				try
-				{
-					Guid transactionId =
-						await _wallet.ChargeAsync(
-							user.Id,
-							walletTotal,
-							$"Order {orderId} (Wallet)");
-
-					await AttachOrderMetadataAsync(
-						transactionId,
-						orderId,
-						cancellationToken);
-				}
-				catch (InvalidOperationException)
-				{
-					return new CheckoutOrderPlacementResult(
-						false,
-						"Insufficient wallet balance.");
-				}
-			}
-
-			await ArchiveCartAsync(
-				user,
-				cancellationToken);
-
-			return new CheckoutOrderPlacementResult(true);
-		}
-
-		public async Task CompleteCardOrderAsync(
-			User user,
-			CheckoutState state,
-			CancellationToken cancellationToken)
-		{
-			await LogPurchaseTransactionAsync(
-				user,
-				state,
-				TransactionStatus.Complete,
-				cancellationToken);
-
-			await ArchiveCartAsync(
-				user,
-				cancellationToken);
-		}
-
-		public Task ArchiveCartAsync(
-			User user,
-			CancellationToken cancellationToken)
-		{
-			return _cartSession.ArchiveAndClear(
-				user,
-				cancellationToken);
-		}
-
-		private async Task LogPurchaseTransactionAsync(
-			User user,
-			CheckoutState state,
-			TransactionStatus status,
-			CancellationToken cancellationToken)
-		{
-			if (state.Total <= 0m ||
-				string.IsNullOrWhiteSpace(state.OrderId))
-			{
-				return;
-			}
-
-			bool alreadyExists =
-				await OrderTransactionExistsAsync(
-					user.Id,
-					state.OrderId,
-					cancellationToken);
-
-			if (alreadyExists)
-			{
-				return;
-			}
-
-			var transaction =
-				new Transaction
-				{
-					Id = Guid.NewGuid(),
-					UserId = user.Id,
-					CreatedAtUtc = DateTime.UtcNow,
-
-					PurchaseTitle =
-						$"Order {state.OrderId} " +
-						$"({state.PaymentMethod})",
-
-					Amount = state.PaymentMethod == PaladinHub.Models.Checkout.PaymentMethod.Card && state.Currency == "USD" && state.UsdPerEur > 0m
-						? decimal.Round(state.Total * state.UsdPerEur, 2, MidpointRounding.AwayFromZero) : state.Total,
-					Currency = state.PaymentMethod == PaladinHub.Models.Checkout.PaymentMethod.Card && state.Currency == "USD" ? "USD" : Currency,
-					Region = state.PaymentMethod == PaladinHub.Models.Checkout.PaymentMethod.Card && state.Currency == "USD" ? "US" : Region,
-					Status = status,
-					ExternalId = state.OrderId,
-					Type = TransactionType.Purchase
-				};
-
-			_db.Transactions.Add(transaction);
-
-			await _db.SaveChangesAsync(
-				cancellationToken);
-		}
-
-		private async Task AttachOrderMetadataAsync(
-			Guid transactionId,
-			string orderId,
-			CancellationToken cancellationToken)
-		{
-			Transaction? transaction =
-				await _db.Transactions.FirstOrDefaultAsync(
-					item => item.Id == transactionId,
-					cancellationToken);
-
-			if (transaction == null)
-			{
-				throw new InvalidOperationException(
-					"Wallet transaction was not found.");
-			}
-
-			transaction.ExternalId = orderId;
-			transaction.Region = Region;
-
-			await _db.SaveChangesAsync(
-				cancellationToken);
-		}
-	}
+    public Task ArchiveCartAsync(
+        User user,
+        CancellationToken cancellationToken)
+    {
+        return _cart.ArchiveAsync(
+            user,
+            cancellationToken);
+    }
 }

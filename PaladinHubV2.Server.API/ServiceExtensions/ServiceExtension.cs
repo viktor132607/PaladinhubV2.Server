@@ -328,7 +328,14 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 			services.AddScoped<SeoService>();
 
 			services.AddScoped<ICheckoutSessionService, CheckoutSessionService>();
-			services.AddScoped<ICheckoutOrderService, CheckoutOrderService>();
+			services.AddScoped<ICheckoutCartCoordinator, CheckoutCartCoordinator>();
+			services.AddScoped<ICheckoutOrderTransactionService, CheckoutOrderTransactionService>();
+			services.AddScoped<ICheckoutWalletPaymentService, CheckoutWalletPaymentService>();
+			services.AddScoped<ICheckoutOrderService>(provider =>
+				new CheckoutOrderService(
+					provider.GetRequiredService<ICheckoutCartCoordinator>(),
+					provider.GetRequiredService<ICheckoutWalletPaymentService>(),
+					provider.GetRequiredService<ICheckoutOrderTransactionService>()));
 			services.AddScoped<ICheckoutCardPaymentService, CheckoutCardPaymentService>();
 			services.AddScoped<CheckoutCardFlowService>();
 
