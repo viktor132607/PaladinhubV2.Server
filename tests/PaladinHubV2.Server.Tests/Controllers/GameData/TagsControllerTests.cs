@@ -6,6 +6,7 @@ using PaladinHubV2.Server.Common.Models.GameData;
 using PaladinHubV2.Server.Data;
 using PaladinHubV2.Server.Data.Entities;
 using PaladinHubV2.Server.Domain.Services.GameData;
+using PaladinHubV2.Server.Domain.Services.GameDataAdmin;
 using PaladinHubV2.Server.Tests.Support;
 
 namespace PaladinHubV2.Server.Tests.Controllers.GameData;
@@ -271,7 +272,7 @@ public sealed class TagsControllerTests
 
     private static TagsController CreateController(AppDbContext db, string actor = "actor-1")
     {
-        var controller = new TagsController(db, new GameDataAssignmentService(db));
+        var controller = new TagsController(new TagAdminService(db, new GameDataAssignmentService(db)));
         ControllerTestSupport.Attach(controller, ControllerTestSupport.CreateHttpContext(actor));
         return controller;
     }
