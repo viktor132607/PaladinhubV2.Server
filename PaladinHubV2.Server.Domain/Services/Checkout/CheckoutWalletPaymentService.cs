@@ -2,6 +2,7 @@ using System.Xml;
 using PaladinHub.Models.Checkout;
 using PaladinHubV2.Server.Data.Entities;
 using PaladinHubV2.Server.Domain.Services.Wallet;
+using CheckoutPaymentMethod = PaladinHub.Models.Checkout.PaymentMethod;
 
 namespace PaladinHubV2.Server.Domain.Services.Checkout;
 
@@ -36,7 +37,7 @@ public sealed class CheckoutWalletPaymentService :
         decimal? walletBalance = null;
         string? paymentError = null;
 
-        if (state.PaymentMethod != PaymentMethod.Balance)
+        if (state.PaymentMethod != CheckoutPaymentMethod.Balance)
         {
             return new CheckoutPaymentReview(
                 walletBalance,
