@@ -147,6 +147,16 @@
     <Include>[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Banners.BannerRules,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Banners.BannerStoreService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Banners.PostgresBannerRepository,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Banners.BannerStore</Include>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(DatabaseBrowserRefactorCoverage)' == 'true'">
+    <CollectCoverage>true</CollectCoverage>
+    <CoverletOutputFormat>json</CoverletOutputFormat>
+    <CoverletOutput>$(MSBuildProjectDirectory)/coverage/database-browser-refactor.json</CoverletOutput>
+    <Threshold>100</Threshold>
+    <ThresholdType>line</ThresholdType>
+    <ThresholdStat>total</ThresholdStat>
+    <Include>[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.DatabaseBrowserService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.DatabaseBrowseScopeResolver,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.DatabaseSpellBrowseQuery,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.DatabaseItemBrowseQuery</Include>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="coverlet.msbuild">
