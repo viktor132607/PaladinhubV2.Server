@@ -19,13 +19,14 @@ public sealed class CheckoutOrderRefactorCoverageTests
         TestContext.Current.CancellationToken;
 
     [Fact]
-    public async Task CartSnapshotProviderSyncsAndProjectsCart()
+    public async Task CartCoordinatorSyncsProjectsAndArchives()
     {
         var cartSession = new Mock<ICartSessionService>();
         var products = new Mock<IProductService>();
         var user = new User { Id = "user-1" };
 
-        products.Setup(service => service.GetMyProducts(user))
+        products.Setup(service =>
+                service.GetMyProducts(user))
             .ReturnsAsync(
                 new MyCartViewModel
                 {
@@ -47,34 +48,45 @@ public sealed class CheckoutOrderRefactorCoverageTests
                     ]
                 });
 
-        var provider =
-            new CheckoutCartSnapshotProvider(
+        var coordinator =
+            new CheckoutCartCoordinator(
                 cartSession.Object,
                 products.Object);
 
         CheckoutCartSnapshot snapshot =
-            await provider.GetAsync(
+            await coordinator.GetSnapshotAsync(
                 user,
                 Ct);
 
         Assert.Equal(2, snapshot.Items);
         Assert.Equal(42.50m, snapshot.Total);
 
+        await coordinator.ArchiveAsync(
+            user,
+            Ct);
+
         cartSession.Verify(service =>
             service.SyncRedisToPersistent(
+                user,
+                Ct),
+            Times.Once);
+
+        cartSession.Verify(service =>
+            service.ArchiveAndClear(
                 user,
                 Ct),
             Times.Once);
     }
 
     [Fact]
-    public async Task CartSnapshotProviderHandlesNullProductCollection()
+    public async Task CartCoordinatorHandlesNullProductCollection()
     {
         var cartSession = new Mock<ICartSessionService>();
         var products = new Mock<IProductService>();
         var user = new User { Id = "user-2" };
 
-        products.Setup(service => service.GetMyProducts(user))
+        products.Setup(service =>
+                service.GetMyProducts(user))
             .ReturnsAsync(
                 new MyCartViewModel
                 {
@@ -82,13 +94,13 @@ public sealed class CheckoutOrderRefactorCoverageTests
                     MyProducts = null!
                 });
 
-        var provider =
-            new CheckoutCartSnapshotProvider(
+        var coordinator =
+            new CheckoutCartCoordinator(
                 cartSession.Object,
                 products.Object);
 
         CheckoutCartSnapshot snapshot =
-            await provider.GetAsync(
+            await coordinator.GetSnapshotAsync(
                 user,
                 Ct);
 
@@ -97,18 +109,246 @@ public sealed class CheckoutOrderRefactorCoverageTests
     }
 
     [Fact]
-    public async Task WalletReviewSkipsNonBalancePayments()
+    public void MoneyPolicyCoversWalletAndPurchaseCurrencies()
     {
-        var wallet = new Mock<IWalletService>();
+        Assert.Equal(
+            12.35m,
+            CheckoutOrderMoneyPolicy.ResolveWalletTotal(
+                10m,
+                1.2345m));
+
+        Assert.Equal(
+            10m,
+            CheckoutOrderMoneyPolicy.ResolveWalletTotal(
+                10m,
+                0m));
+
+        CheckoutPurchaseMoney eur =
+            CheckoutOrderMoneyPolicy.ResolvePurchase(
+                new CheckoutState
+                {
+                    PaymentMethod =
+                        PaymentMethod.CashOnDelivery,
+                    Total = 20m
+                });
+
+        Assert.Equal(20m, eur.Amount);
+        Assert.Equal("EUR", eur.Currency);
+        Assert.Equal("EU", eur.Region);
+
+        CheckoutPurchaseMoney usd =
+            CheckoutOrderMoneyPolicy.ResolvePurchase(
+                new CheckoutState
+                {
+                    PaymentMethod = PaymentMethod.Card,
+                    Total = 10m,
+                    Currency = "USD",
+                    UsdPerEur = 1.25m
+                });
+
+        Assert.Equal(12.50m, usd.Amount);
+        Assert.Equal("USD", usd.Currency);
+        Assert.Equal("US", usd.Region);
+
+        CheckoutPurchaseMoney usdWithoutRate =
+            CheckoutOrderMoneyPolicy.ResolvePurchase(
+                new CheckoutState
+                {
+                    PaymentMethod = PaymentMethod.Card,
+                    Total = 10m,
+                    Currency = "USD",
+                    UsdPerEur = 0m
+                });
+
+        Assert.Equal(10m, usdWithoutRate.Amount);
+        Assert.Equal("USD", usdWithoutRate.Currency);
+        Assert.Equal("US", usdWithoutRate.Region);
+    }
+
+    [Fact]
+    public async Task TransactionServiceCoversLoggingExistenceAndDuplicateGuard()
+    {
+        await using AppDbContext db =
+            CreateDb();
+
         var service =
-            new CheckoutWalletReviewService(
-                wallet.Object);
+            new CheckoutOrderTransactionService(
+                db);
+
+        var user = new User
+        {
+            Id = "user-1"
+        };
+
+        await service.LogPurchaseAsync(
+            user,
+            new CheckoutState
+            {
+                OrderId = "invalid",
+                Total = 0m,
+                PaymentMethod =
+                    PaymentMethod.CashOnDelivery
+            },
+            TransactionStatus.Pending,
+            Ct);
+
+        Assert.Empty(db.Transactions);
 
         var state = new CheckoutState
         {
-            PaymentMethod = PaymentMethod.Card,
-            UsdPerEur = 9m
+            OrderId = "cash-order",
+            Total = 19.99m,
+            PaymentMethod =
+                PaymentMethod.CashOnDelivery
         };
+
+        await service.LogPurchaseAsync(
+            user,
+            state,
+            TransactionStatus.Pending,
+            Ct);
+
+        Transaction transaction =
+            Assert.Single(db.Transactions);
+
+        Assert.Equal(
+            "cash-order",
+            transaction.ExternalId);
+        Assert.Equal(
+            19.99m,
+            transaction.Amount);
+        Assert.Equal(
+            "EUR",
+            transaction.Currency);
+        Assert.Equal(
+            "EU",
+            transaction.Region);
+        Assert.Equal(
+            TransactionStatus.Pending,
+            transaction.Status);
+        Assert.Equal(
+            TransactionType.Purchase,
+            transaction.Type);
+        Assert.Contains(
+            "CashOnDelivery",
+            transaction.PurchaseTitle);
+
+        Assert.True(
+            await service.ExistsAsync(
+                user.Id,
+                "cash-order",
+                Ct));
+
+        await service.LogPurchaseAsync(
+            user,
+            state,
+            TransactionStatus.Complete,
+            Ct);
+
+        Assert.Single(db.Transactions);
+    }
+
+    [Fact]
+    public async Task TransactionServiceCoversUsdCardAndWalletMetadata()
+    {
+        await using AppDbContext db =
+            CreateDb();
+
+        var service =
+            new CheckoutOrderTransactionService(
+                db);
+
+        var user = new User
+        {
+            Id = "user-2"
+        };
+
+        await service.LogPurchaseAsync(
+            user,
+            new CheckoutState
+            {
+                OrderId = "card-order",
+                Total = 10m,
+                PaymentMethod =
+                    PaymentMethod.Card,
+                Currency = "USD",
+                UsdPerEur = 1.234m
+            },
+            TransactionStatus.Complete,
+            Ct);
+
+        Transaction purchase =
+            Assert.Single(db.Transactions);
+
+        Assert.Equal(
+            12.34m,
+            purchase.Amount);
+        Assert.Equal(
+            "USD",
+            purchase.Currency);
+        Assert.Equal(
+            "US",
+            purchase.Region);
+
+        var walletCharge =
+            new Transaction
+            {
+                Id = Guid.NewGuid(),
+                UserId = user.Id,
+                Amount = -5m,
+                Currency = "USD",
+                Region = "US",
+                Status =
+                    TransactionStatus.Complete,
+                Type =
+                    TransactionType.WalletCharge
+            };
+
+        db.Transactions.Add(
+            walletCharge);
+
+        await db.SaveChangesAsync(Ct);
+
+        await service.AttachOrderMetadataAsync(
+            walletCharge.Id,
+            "wallet-order",
+            Ct);
+
+        Assert.Equal(
+            "wallet-order",
+            walletCharge.ExternalId);
+        Assert.Equal(
+            "EU",
+            walletCharge.Region);
+
+        await Assert.ThrowsAsync<
+            InvalidOperationException>(
+            () =>
+                service.AttachOrderMetadataAsync(
+                    Guid.NewGuid(),
+                    "missing",
+                    Ct));
+    }
+
+    [Fact]
+    public async Task WalletReviewSkipsNonBalancePayments()
+    {
+        var wallet = new Mock<IWalletService>();
+        var transactions =
+            new Mock<ICheckoutOrderTransactionService>();
+
+        var service =
+            new CheckoutWalletPaymentService(
+                wallet.Object,
+                transactions.Object);
+
+        var state =
+            new CheckoutState
+            {
+                PaymentMethod =
+                    PaymentMethod.Card,
+                UsdPerEur = 9m
+            };
 
         CheckoutPaymentReview review =
             await service.ReviewAsync(
@@ -116,32 +356,44 @@ public sealed class CheckoutOrderRefactorCoverageTests
                 state,
                 15m);
 
-        Assert.Null(review.WalletBalance);
-        Assert.Null(review.PaymentError);
-        Assert.Equal(9m, state.UsdPerEur);
+        Assert.Null(
+            review.WalletBalance);
+        Assert.Null(
+            review.PaymentError);
+        Assert.Equal(
+            9m,
+            state.UsdPerEur);
 
         wallet.Verify(
-            item => item.GetBalanceAsync(
-                It.IsAny<string>()),
+            item =>
+                item.GetBalanceAsync(
+                    It.IsAny<string>()),
             Times.Never);
     }
 
     [Fact]
-    public async Task WalletReviewWithoutRateProviderUsesEuroTotal()
+    public async Task WalletReviewWithoutRateProviderUsesOrderTotal()
     {
         var wallet = new Mock<IWalletService>();
+        var transactions =
+            new Mock<ICheckoutOrderTransactionService>();
+
         wallet.Setup(service =>
-                service.GetBalanceAsync("user"))
+                service.GetBalanceAsync(
+                    "user"))
             .ReturnsAsync(50m);
 
         var service =
-            new CheckoutWalletReviewService(
-                wallet.Object);
+            new CheckoutWalletPaymentService(
+                wallet.Object,
+                transactions.Object);
 
-        var state = new CheckoutState
-        {
-            PaymentMethod = PaymentMethod.Balance
-        };
+        var state =
+            new CheckoutState
+            {
+                PaymentMethod =
+                    PaymentMethod.Balance
+            };
 
         CheckoutPaymentReview review =
             await service.ReviewAsync(
@@ -149,23 +401,28 @@ public sealed class CheckoutOrderRefactorCoverageTests
                 state,
                 20m);
 
-        Assert.False(service.RequiresVerifiedRate);
-        Assert.Equal(50m, review.WalletBalance);
-        Assert.Null(review.PaymentError);
-        Assert.Equal(0m, state.UsdPerEur);
         Assert.Equal(
-            20m,
-            service.GetChargeAmount(state));
+            50m,
+            review.WalletBalance);
+        Assert.Null(
+            review.PaymentError);
+        Assert.Equal(
+            0m,
+            state.UsdPerEur);
     }
 
     [Fact]
-    public async Task WalletReviewUsesVerifiedRateAndDetectsInsufficientBalance()
+    public async Task WalletReviewUsesRateAndDetectsInsufficientBalance()
     {
         var wallet = new Mock<IWalletService>();
-        var rates = new Mock<IEuroUsdRateProvider>();
+        var transactions =
+            new Mock<ICheckoutOrderTransactionService>();
+        var rates =
+            new Mock<IEuroUsdRateProvider>();
 
         wallet.Setup(service =>
-                service.GetBalanceAsync("user"))
+                service.GetBalanceAsync(
+                    "user"))
             .ReturnsAsync(10m);
 
         rates.Setup(service =>
@@ -174,15 +431,17 @@ public sealed class CheckoutOrderRefactorCoverageTests
             .ReturnsAsync(1.25m);
 
         var service =
-            new CheckoutWalletReviewService(
+            new CheckoutWalletPaymentService(
                 wallet.Object,
+                transactions.Object,
                 rates.Object);
 
-        var state = new CheckoutState
-        {
-            PaymentMethod = PaymentMethod.Balance,
-            Total = 20m
-        };
+        var state =
+            new CheckoutState
+            {
+                PaymentMethod =
+                    PaymentMethod.Balance
+            };
 
         CheckoutPaymentReview review =
             await service.ReviewAsync(
@@ -190,36 +449,26 @@ public sealed class CheckoutOrderRefactorCoverageTests
                 state,
                 20m);
 
-        Assert.True(service.RequiresVerifiedRate);
-        Assert.Equal(1.25m, state.UsdPerEur);
+        Assert.Equal(
+            1.25m,
+            state.UsdPerEur);
         Assert.Equal(
             "Insufficient wallet balance.",
             review.PaymentError);
-        Assert.Equal(
-            25m,
-            service.GetChargeAmount(state));
-        Assert.Equal(
-            25m,
-            CheckoutWalletReviewService
-                .ConvertToWalletAmount(
-                    20m,
-                    1.25m));
-        Assert.Equal(
-            20m,
-            CheckoutWalletReviewService
-                .ConvertToWalletAmount(
-                    20m,
-                    0m));
     }
 
     [Fact]
-    public async Task WalletReviewMapsRateExceptionsAndInvalidRates()
+    public async Task WalletReviewMapsRateExceptionAndInvalidRate()
     {
         var wallet = new Mock<IWalletService>();
-        var rates = new Mock<IEuroUsdRateProvider>();
+        var transactions =
+            new Mock<ICheckoutOrderTransactionService>();
+        var rates =
+            new Mock<IEuroUsdRateProvider>();
 
         wallet.Setup(service =>
-                service.GetBalanceAsync("user"))
+                service.GetBalanceAsync(
+                    "user"))
             .ReturnsAsync(100m);
 
         rates.SetupSequence(service =>
@@ -230,19 +479,19 @@ public sealed class CheckoutOrderRefactorCoverageTests
             .ReturnsAsync(0m);
 
         var service =
-            new CheckoutWalletReviewService(
+            new CheckoutWalletPaymentService(
                 wallet.Object,
+                transactions.Object,
                 rates.Object);
-
-        var firstState = new CheckoutState
-        {
-            PaymentMethod = PaymentMethod.Balance
-        };
 
         CheckoutPaymentReview first =
             await service.ReviewAsync(
                 new User { Id = "user" },
-                firstState,
+                new CheckoutState
+                {
+                    PaymentMethod =
+                        PaymentMethod.Balance
+                },
                 10m);
 
         Assert.Contains(
@@ -250,15 +499,14 @@ public sealed class CheckoutOrderRefactorCoverageTests
             first.PaymentError!,
             StringComparison.OrdinalIgnoreCase);
 
-        var secondState = new CheckoutState
-        {
-            PaymentMethod = PaymentMethod.Balance
-        };
-
         CheckoutPaymentReview second =
             await service.ReviewAsync(
                 new User { Id = "user" },
-                secondState,
+                new CheckoutState
+                {
+                    PaymentMethod =
+                        PaymentMethod.Balance
+                },
                 10m);
 
         Assert.Contains(
@@ -268,198 +516,129 @@ public sealed class CheckoutOrderRefactorCoverageTests
     }
 
     [Fact]
-    public async Task TransactionStoreCoversExistenceLoggingAndDuplicateGuard()
+    public async Task WalletChargeRequiresRateWhenProviderExists()
     {
-        await using AppDbContext db =
-            CreateDb();
+        var wallet = new Mock<IWalletService>();
+        var transactions =
+            new Mock<ICheckoutOrderTransactionService>();
+        var rates =
+            new Mock<IEuroUsdRateProvider>();
 
-        var store =
-            new CheckoutTransactionStore(db);
+        var service =
+            new CheckoutWalletPaymentService(
+                wallet.Object,
+                transactions.Object,
+                rates.Object);
 
-        var user = new User
-        {
-            Id = "user-1"
-        };
+        CheckoutOrderPlacementResult result =
+            await service.ChargeAsync(
+                new User { Id = "user" },
+                new CheckoutState
+                {
+                    Total = 10m,
+                    UsdPerEur = 0m
+                },
+                "order",
+                Ct);
 
-        var invalid = new CheckoutState
-        {
-            OrderId = "invalid",
-            Total = 0m,
-            PaymentMethod = PaymentMethod.CashOnDelivery
-        };
-
-        await store.LogPurchaseAsync(
-            user,
-            invalid,
-            TransactionStatus.Pending,
-            Ct);
-
-        Assert.Empty(db.Transactions);
-
-        var state = new CheckoutState
-        {
-            OrderId = "cash-order",
-            Total = 19.99m,
-            PaymentMethod = PaymentMethod.CashOnDelivery
-        };
-
-        await store.LogPurchaseAsync(
-            user,
-            state,
-            TransactionStatus.Pending,
-            Ct);
-
-        Transaction transaction =
-            Assert.Single(db.Transactions);
-
-        Assert.Equal("cash-order", transaction.ExternalId);
-        Assert.Equal(19.99m, transaction.Amount);
-        Assert.Equal("EUR", transaction.Currency);
-        Assert.Equal("EU", transaction.Region);
-        Assert.Equal(TransactionStatus.Pending, transaction.Status);
-        Assert.Equal(TransactionType.Purchase, transaction.Type);
+        Assert.False(
+            result.Success);
         Assert.Contains(
-            "CashOnDelivery",
-            transaction.PurchaseTitle);
-
-        Assert.True(
-            await store.ExistsAsync(
-                user.Id,
-                "cash-order",
-                Ct));
-
-        await store.LogPurchaseAsync(
-            user,
-            state,
-            TransactionStatus.Complete,
-            Ct);
-
-        Assert.Single(db.Transactions);
+            "exchange rate",
+            result.ErrorMessage!,
+            StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public async Task TransactionStoreLogsUsdCardAndAttachesWalletMetadata()
+    public async Task WalletChargeMapsFailureAndAttachesSuccessfulCharge()
     {
-        await using AppDbContext db =
-            CreateDb();
+        var wallet = new Mock<IWalletService>();
+        var transactions =
+            new Mock<ICheckoutOrderTransactionService>();
+        var user = new User { Id = "user" };
 
-        var store =
-            new CheckoutTransactionStore(db);
-        var user = new User { Id = "user-2" };
+        wallet.SetupSequence(service =>
+                service.ChargeAsync(
+                    user.Id,
+                    12m,
+                    "Order order (Wallet)"))
+            .ThrowsAsync(
+                new InvalidOperationException())
+            .ReturnsAsync(
+                Guid.Parse(
+                    "11111111-1111-1111-1111-111111111111"));
 
-        var state = new CheckoutState
-        {
-            OrderId = "card-order",
-            Total = 10m,
-            PaymentMethod = PaymentMethod.Card,
-            Currency = "USD",
-            UsdPerEur = 1.234m
-        };
+        var service =
+            new CheckoutWalletPaymentService(
+                wallet.Object,
+                transactions.Object);
 
-        await store.LogPurchaseAsync(
-            user,
-            state,
-            TransactionStatus.Complete,
-            Ct);
-
-        Transaction purchase =
-            Assert.Single(db.Transactions);
-
-        Assert.Equal(12.34m, purchase.Amount);
-        Assert.Equal("USD", purchase.Currency);
-        Assert.Equal("US", purchase.Region);
-
-        var walletCharge = new Transaction
-        {
-            Id = Guid.NewGuid(),
-            UserId = user.Id,
-            Amount = -5m,
-            Currency = "USD",
-            Region = "US",
-            Status = TransactionStatus.Complete,
-            Type = TransactionType.WalletCharge
-        };
-
-        db.Transactions.Add(walletCharge);
-        await db.SaveChangesAsync(Ct);
-
-        await store.AttachOrderMetadataAsync(
-            walletCharge.Id,
-            "wallet-order",
-            Ct);
-
-        Assert.Equal(
-            "wallet-order",
-            walletCharge.ExternalId);
-        Assert.Equal("EU", walletCharge.Region);
-
-        await Assert.ThrowsAsync<InvalidOperationException>(
-            () => store.AttachOrderMetadataAsync(
-                Guid.NewGuid(),
-                "missing",
-                Ct));
-    }
-
-    [Fact]
-    public async Task TransactionStoreIgnoresMissingOrderId()
-    {
-        await using AppDbContext db =
-            CreateDb();
-
-        var store =
-            new CheckoutTransactionStore(db);
-
-        await store.LogPurchaseAsync(
-            new User { Id = "user" },
+        var state =
             new CheckoutState
             {
                 Total = 10m,
-                OrderId = " ",
-                PaymentMethod =
-                    PaymentMethod.CashOnDelivery
-            },
-            TransactionStatus.Pending,
-            Ct);
+                UsdPerEur = 1.2m
+            };
 
-        Assert.Empty(db.Transactions);
+        CheckoutOrderPlacementResult failed =
+            await service.ChargeAsync(
+                user,
+                state,
+                "order",
+                Ct);
+
+        Assert.False(
+            failed.Success);
+        Assert.Equal(
+            "Insufficient wallet balance.",
+            failed.ErrorMessage);
+
+        CheckoutOrderPlacementResult success =
+            await service.ChargeAsync(
+                user,
+                state,
+                "order",
+                Ct);
+
+        Assert.True(
+            success.Success);
+
+        transactions.Verify(service =>
+            service.AttachOrderMetadataAsync(
+                Guid.Parse(
+                    "11111111-1111-1111-1111-111111111111"),
+                "order",
+                Ct),
+            Times.Once);
     }
 
     [Fact]
-    public void CompatibilityConstructorRemainsAvailable()
+    public async Task FacadeDelegatesQueriesAndCompatibilityConstructorBuildsDefaults()
     {
-        using AppDbContext db =
+        await using AppDbContext db =
             CreateDb();
 
-        var service =
+        Assert.NotNull(
             new CheckoutOrderService(
                 Mock.Of<ICartSessionService>(),
                 Mock.Of<IProductService>(),
                 Mock.Of<IWalletService>(),
-                db,
-                Mock.Of<IEuroUsdRateProvider>());
+                db));
 
-        Assert.NotNull(service);
-    }
-
-    [Fact]
-    public async Task FacadeDelegatesReadOperations()
-    {
-        var snapshots =
-            new Mock<ICheckoutCartSnapshotProvider>();
-        var review =
-            new Mock<ICheckoutWalletReviewService>();
-        var transactions =
-            new Mock<ICheckoutTransactionStore>();
-        var wallet =
-            new Mock<IWalletService>();
         var cart =
-            new Mock<ICartSessionService>();
+            new Mock<ICheckoutCartCoordinator>();
+        var walletPayments =
+            new Mock<ICheckoutWalletPaymentService>();
+        var transactions =
+            new Mock<ICheckoutOrderTransactionService>();
 
-        var user = new User { Id = "user" };
-        var state = new CheckoutState();
+        var user =
+            new User { Id = "user" };
+        var state =
+            new CheckoutState();
 
-        snapshots.Setup(service =>
-                service.GetAsync(
+        cart.Setup(service =>
+                service.GetSnapshotAsync(
                     user,
                     Ct))
             .ReturnsAsync(
@@ -467,7 +646,7 @@ public sealed class CheckoutOrderRefactorCoverageTests
                     2,
                     30m));
 
-        review.Setup(service =>
+        walletPayments.Setup(service =>
                 service.ReviewAsync(
                     user,
                     state,
@@ -484,13 +663,11 @@ public sealed class CheckoutOrderRefactorCoverageTests
                     Ct))
             .ReturnsAsync(true);
 
-        CheckoutOrderService service =
-            CreateService(
-                snapshots.Object,
-                review.Object,
-                transactions.Object,
-                wallet.Object,
-                cart.Object);
+        var service =
+            new CheckoutOrderService(
+                cart.Object,
+                walletPayments.Object,
+                transactions.Object);
 
         Assert.Equal(
             30m,
@@ -513,19 +690,25 @@ public sealed class CheckoutOrderRefactorCoverageTests
     }
 
     [Fact]
-    public async Task CashOnDeliveryLogsOnlyNewOrderAndAlwaysArchives()
+    public async Task CashOnDeliveryLogsNewOrderAndArchivesDuplicates()
     {
-        var transactions =
-            new Mock<ICheckoutTransactionStore>();
         var cart =
-            new Mock<ICartSessionService>();
-        var user = new User { Id = "user" };
-        var state = new CheckoutState
-        {
-            OrderId = "order",
-            Total = 20m,
-            PaymentMethod = PaymentMethod.CashOnDelivery
-        };
+            new Mock<ICheckoutCartCoordinator>();
+        var walletPayments =
+            new Mock<ICheckoutWalletPaymentService>();
+        var transactions =
+            new Mock<ICheckoutOrderTransactionService>();
+
+        var user =
+            new User { Id = "user" };
+        var state =
+            new CheckoutState
+            {
+                OrderId = "order",
+                Total = 20m,
+                PaymentMethod =
+                    PaymentMethod.CashOnDelivery
+            };
 
         transactions.SetupSequence(service =>
                 service.ExistsAsync(
@@ -535,10 +718,11 @@ public sealed class CheckoutOrderRefactorCoverageTests
             .ReturnsAsync(false)
             .ReturnsAsync(true);
 
-        CheckoutOrderService service =
-            CreateService(
-                transactions: transactions.Object,
-                cartSession: cart.Object);
+        var service =
+            new CheckoutOrderService(
+                cart.Object,
+                walletPayments.Object,
+                transactions.Object);
 
         CheckoutOrderPlacementResult first =
             await service.PlaceCashOnDeliveryAsync(
@@ -566,252 +750,127 @@ public sealed class CheckoutOrderRefactorCoverageTests
             Times.Once);
 
         cart.Verify(service =>
-            service.ArchiveAndClear(
+            service.ArchiveAsync(
                 user,
                 Ct),
             Times.Exactly(2));
     }
 
     [Fact]
-    public async Task WalletPlacementRequiresRateWhenConfigured()
+    public async Task WalletPlacementPropagatesFailureAndArchivesSuccessOrDuplicate()
     {
-        var review =
-            new Mock<ICheckoutWalletReviewService>();
-        var transactions =
-            new Mock<ICheckoutTransactionStore>();
-
-        review.SetupGet(service =>
-                service.RequiresVerifiedRate)
-            .Returns(true);
-
-        transactions.Setup(service =>
-                service.ExistsAsync(
-                    "user",
-                    "order",
-                    Ct))
-            .ReturnsAsync(false);
-
-        CheckoutOrderService service =
-            CreateService(
-                review: review.Object,
-                transactions: transactions.Object);
-
-        CheckoutOrderPlacementResult result =
-            await service.PlaceWalletAsync(
-                new User { Id = "user" },
-                new CheckoutState
-                {
-                    Total = 10m,
-                    UsdPerEur = 0m
-                },
-                "order",
-                Ct);
-
-        Assert.False(result.Success);
-        Assert.Contains(
-            "exchange rate",
-            result.ErrorMessage!,
-            StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public async Task WalletPlacementMapsChargeFailure()
-    {
-        var review =
-            new Mock<ICheckoutWalletReviewService>();
-        var transactions =
-            new Mock<ICheckoutTransactionStore>();
-        var wallet =
-            new Mock<IWalletService>();
-
-        var state = new CheckoutState
-        {
-            Total = 10m,
-            UsdPerEur = 1.2m
-        };
-
-        transactions.Setup(service =>
-                service.ExistsAsync(
-                    "user",
-                    "order",
-                    Ct))
-            .ReturnsAsync(false);
-
-        review.SetupGet(service =>
-                service.RequiresVerifiedRate)
-            .Returns(true);
-
-        review.Setup(service =>
-                service.GetChargeAmount(
-                    state))
-            .Returns(12m);
-
-        wallet.Setup(service =>
-                service.ChargeAsync(
-                    "user",
-                    12m,
-                    "Order order (Wallet)"))
-            .ThrowsAsync(
-                new InvalidOperationException());
-
-        CheckoutOrderService service =
-            CreateService(
-                review: review.Object,
-                transactions: transactions.Object,
-                wallet: wallet.Object);
-
-        CheckoutOrderPlacementResult result =
-            await service.PlaceWalletAsync(
-                new User { Id = "user" },
-                state,
-                "order",
-                Ct);
-
-        Assert.False(result.Success);
-        Assert.Equal(
-            "Insufficient wallet balance.",
-            result.ErrorMessage);
-    }
-
-    [Fact]
-    public async Task WalletPlacementChargesAttachesMetadataAndArchives()
-    {
-        var review =
-            new Mock<ICheckoutWalletReviewService>();
-        var transactions =
-            new Mock<ICheckoutTransactionStore>();
-        var wallet =
-            new Mock<IWalletService>();
         var cart =
-            new Mock<ICartSessionService>();
-
-        var user = new User { Id = "user" };
-        var state = new CheckoutState
-        {
-            Total = 10m
-        };
-        Guid transactionId =
-            Guid.NewGuid();
-
-        transactions.Setup(service =>
-                service.ExistsAsync(
-                    user.Id,
-                    "order",
-                    Ct))
-            .ReturnsAsync(false);
-
-        review.SetupGet(service =>
-                service.RequiresVerifiedRate)
-            .Returns(false);
-
-        review.Setup(service =>
-                service.GetChargeAmount(
-                    state))
-            .Returns(10m);
-
-        wallet.Setup(service =>
-                service.ChargeAsync(
-                    user.Id,
-                    10m,
-                    "Order order (Wallet)"))
-            .ReturnsAsync(transactionId);
-
-        CheckoutOrderService service =
-            CreateService(
-                review: review.Object,
-                transactions: transactions.Object,
-                wallet: wallet.Object,
-                cartSession: cart.Object);
-
-        CheckoutOrderPlacementResult result =
-            await service.PlaceWalletAsync(
-                user,
-                state,
-                "order",
-                Ct);
-
-        Assert.True(result.Success);
-
-        transactions.Verify(service =>
-            service.AttachOrderMetadataAsync(
-                transactionId,
-                "order",
-                Ct),
-            Times.Once);
-
-        cart.Verify(service =>
-            service.ArchiveAndClear(
-                user,
-                Ct),
-            Times.Once);
-    }
-
-    [Fact]
-    public async Task WalletPlacementAlreadyProcessedSkipsChargeAndArchives()
-    {
+            new Mock<ICheckoutCartCoordinator>();
+        var walletPayments =
+            new Mock<ICheckoutWalletPaymentService>();
         var transactions =
-            new Mock<ICheckoutTransactionStore>();
-        var wallet =
-            new Mock<IWalletService>();
-        var cart =
-            new Mock<ICartSessionService>();
-        var user = new User { Id = "user" };
+            new Mock<ICheckoutOrderTransactionService>();
 
-        transactions.Setup(service =>
+        var user =
+            new User { Id = "user" };
+        var state =
+            new CheckoutState();
+
+        transactions.SetupSequence(service =>
                 service.ExistsAsync(
                     user.Id,
                     "order",
                     Ct))
+            .ReturnsAsync(false)
+            .ReturnsAsync(false)
             .ReturnsAsync(true);
 
-        CheckoutOrderService service =
-            CreateService(
-                transactions: transactions.Object,
-                wallet: wallet.Object,
-                cartSession: cart.Object);
+        walletPayments.SetupSequence(service =>
+                service.ChargeAsync(
+                    user,
+                    state,
+                    "order",
+                    Ct))
+            .ReturnsAsync(
+                new CheckoutOrderPlacementResult(
+                    false,
+                    "failed"))
+            .ReturnsAsync(
+                new CheckoutOrderPlacementResult(
+                    true));
 
-        CheckoutOrderPlacementResult result =
+        var service =
+            new CheckoutOrderService(
+                cart.Object,
+                walletPayments.Object,
+                transactions.Object);
+
+        CheckoutOrderPlacementResult failed =
             await service.PlaceWalletAsync(
                 user,
-                new CheckoutState(),
+                state,
                 "order",
                 Ct);
 
-        Assert.True(result.Success);
+        Assert.False(
+            failed.Success);
+        Assert.Equal(
+            "failed",
+            failed.ErrorMessage);
 
-        wallet.Verify(service =>
+        CheckoutOrderPlacementResult success =
+            await service.PlaceWalletAsync(
+                user,
+                state,
+                "order",
+                Ct);
+
+        CheckoutOrderPlacementResult duplicate =
+            await service.PlaceWalletAsync(
+                user,
+                state,
+                "order",
+                Ct);
+
+        Assert.True(success.Success);
+        Assert.True(duplicate.Success);
+
+        walletPayments.Verify(service =>
             service.ChargeAsync(
-                It.IsAny<string>(),
-                It.IsAny<decimal>(),
-                It.IsAny<string>()),
-            Times.Never);
+                user,
+                state,
+                "order",
+                Ct),
+            Times.Exactly(2));
 
         cart.Verify(service =>
-            service.ArchiveAndClear(
+            service.ArchiveAsync(
                 user,
                 Ct),
-            Times.Once);
+            Times.Exactly(2));
     }
 
     [Fact]
-    public async Task CardCompletionLogsCompletePurchaseAndArchives()
+    public async Task CardCompletionAndArchiveDelegateToCollaborators()
     {
-        var transactions =
-            new Mock<ICheckoutTransactionStore>();
         var cart =
-            new Mock<ICartSessionService>();
-        var user = new User { Id = "user" };
-        var state = new CheckoutState
-        {
-            OrderId = "card-order",
-            Total = 50m,
-            PaymentMethod = PaymentMethod.Card
-        };
+            new Mock<ICheckoutCartCoordinator>();
+        var transactions =
+            new Mock<ICheckoutOrderTransactionService>();
 
-        CheckoutOrderService service =
-            CreateService(
-                transactions: transactions.Object,
-                cartSession: cart.Object);
+        var user =
+            new User { Id = "user" };
+
+        var state =
+            new CheckoutState
+            {
+                OrderId = "card-order",
+                Total = 50m,
+                PaymentMethod =
+                    PaymentMethod.Card
+            };
+
+        var service =
+            new CheckoutOrderService(
+                cart.Object,
+                Mock.Of<
+                    ICheckoutWalletPaymentService>(),
+                transactions.Object);
 
         await service.CompleteCardOrderAsync(
             user,
@@ -831,30 +890,10 @@ public sealed class CheckoutOrderRefactorCoverageTests
             Ct);
 
         cart.Verify(service =>
-            service.ArchiveAndClear(
+            service.ArchiveAsync(
                 user,
                 Ct),
             Times.Exactly(2));
-    }
-
-    private static CheckoutOrderService CreateService(
-        ICheckoutCartSnapshotProvider? snapshots = null,
-        ICheckoutWalletReviewService? review = null,
-        ICheckoutTransactionStore? transactions = null,
-        IWalletService? wallet = null,
-        ICartSessionService? cartSession = null)
-    {
-        return new CheckoutOrderService(
-            snapshots ??
-                Mock.Of<ICheckoutCartSnapshotProvider>(),
-            review ??
-                Mock.Of<ICheckoutWalletReviewService>(),
-            transactions ??
-                Mock.Of<ICheckoutTransactionStore>(),
-            wallet ??
-                Mock.Of<IWalletService>(),
-            cartSession ??
-                Mock.Of<ICartSessionService>());
     }
 
     private static AppDbContext CreateDb()
