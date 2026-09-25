@@ -11,6 +11,8 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 	{
 		internal const string GuestUserSessionKey =
 			"PaladinHub.GuestCheckoutUserId";
+		internal const string AnonymousCartSessionKey =
+			"PaladinHub.AnonymousCartId";
 
 		internal static string GetOwnerKey(
 			HttpContext httpContext,
@@ -32,10 +34,15 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 				return guestUserId;
 			}
 
-			string anonymousId =
-				!string.IsNullOrWhiteSpace(session?.Id)
-					? session.Id
-					: httpContext.TraceIdentifier;
+			string? anonymousId = session?.GetString(AnonymousCartSessionKey);
+			if (session != null && string.IsNullOrWhiteSpace(anonymousId))
+			{
+				anonymousId = session.Id;
+				// Reading Id alone does not persist the ASP.NET Core session cookie.
+				session.SetString(AnonymousCartSessionKey, anonymousId);
+			}
+
+			anonymousId ??= httpContext.TraceIdentifier;
 
 			return $"anon:{anonymousId}";
 		}
@@ -121,7 +128,7 @@ namespace PaladinHubV2.Server.API.Controllers.Store
 						: error);
 			}
 
-			string anonymousOwnerKey = $"anon:{session.Id}";
+			string anonymousOwnerKey = GetOwnerKey(httpContext, principal);
 			var anonymousLines = await cartStore.GetAsync(
 				anonymousOwnerKey,
 				cancellationToken);

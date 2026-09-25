@@ -110,6 +110,11 @@ public sealed class CartsControllerTests
         session.Verify(
             service => service.GetCount("anon:unit-test-session", It.IsAny<CancellationToken>()),
             Times.Once);
+
+        // A write is required for ASP.NET Core to send the session cookie.
+        Assert.Equal(
+            "unit-test-session",
+            controller.HttpContext.Session.GetString("PaladinHub.AnonymousCartId"));
     }
 
     private static (
