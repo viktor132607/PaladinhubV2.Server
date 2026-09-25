@@ -2,8 +2,6 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PaladinHubV2.Server.Common.Models.GameData;
-using PaladinHubV2.Server.Data;
-using PaladinHubV2.Server.Domain.Services.GameData;
 using PaladinHubV2.Server.Domain.Services.GameDataAdmin;
 
 namespace PaladinHubV2.Server.API.Controllers.GameData;
@@ -14,10 +12,9 @@ public sealed class TagsController : ControllerBase
 	private readonly TagAdminService _tags;
 
 	public TagsController(
-		AppDbContext db,
-		GameDataAssignmentService assignments)
+		TagAdminService tags)
 	{
-		_tags = new TagAdminService(db, assignments);
+		_tags = tags;
 	}
 
 	[HttpGet]
