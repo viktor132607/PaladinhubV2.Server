@@ -17,6 +17,16 @@
     <Include>[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Seo.SeoService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Seo.SeoTargetResolver,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Seo.SeoPublicSnapshotService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Seo.SeoMutationLock,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Seo.SeoRequestValidator,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Seo.SeoEntryMapper,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Seo.SeoRevisionFactory,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Seo.SeoUrlPolicy</Include>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(SeoRouteRegistryRefactorCoverage)' == 'true'">
+    <CollectCoverage>true</CollectCoverage>
+    <CoverletOutputFormat>json</CoverletOutputFormat>
+    <CoverletOutput>$(MSBuildProjectDirectory)/coverage/seo-route-registry-refactor.json</CoverletOutput>
+    <Threshold>100</Threshold>
+    <ThresholdType>line</ThresholdType>
+    <ThresholdStat>total</ThresholdStat>
+    <Include>[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Seo.SeoRouteRegistry,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Seo.SeoRouteCatalog,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Seo.SeoRoutePathPolicy,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Seo.SeoStaticRouteResolver</Include>
+  </PropertyGroup>
+
   <PropertyGroup Condition="'$(AccessControlRefactorCoverage)' == 'true'">
     <CollectCoverage>true</CollectCoverage>
     <CoverletOutputFormat>json</CoverletOutputFormat>
