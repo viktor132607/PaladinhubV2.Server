@@ -2,8 +2,6 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PaladinHubV2.Server.Common.Models.GameData;
-using PaladinHubV2.Server.Data;
-using PaladinHubV2.Server.Domain.Services.GameData;
 using PaladinHubV2.Server.Domain.Services.GameDataAdmin;
 
 namespace PaladinHubV2.Server.API.Controllers.GameData;
@@ -14,10 +12,9 @@ public sealed class PatchesController : ControllerBase
 	private readonly PatchAdminService _patches;
 
 	public PatchesController(
-		AppDbContext db,
-		GameDataAssignmentService assignments)
+		PatchAdminService patches)
 	{
-		_patches = new PatchAdminService(db, assignments);
+		_patches = patches;
 	}
 
 	[HttpGet]
