@@ -276,6 +276,8 @@ public sealed class RarityAdminRefactorCoverageTests
             rarity,
             Ct);
 
+        db.ChangeTracker.Clear();
+
         List<Item> items =
             await db.Items
                 .OrderBy(item => item.Name)
