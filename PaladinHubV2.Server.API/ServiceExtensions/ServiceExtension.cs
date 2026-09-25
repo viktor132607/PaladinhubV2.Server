@@ -335,6 +335,20 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 			services.AddScoped<
 				PaladinHubV2.Server.Domain.Services.GameData.GameDataAssignmentService>();
 			services.AddScoped<
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.ICategoryAdminQueryService,
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.CategoryAdminQueryService>();
+			services.AddScoped<
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.ICategoryAdminValidator,
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.CategoryAdminValidator>();
+			services.AddScoped<
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.ICategoryUsageGuard,
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.CategoryUsageGuard>();
+			services.AddScoped<
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.ICategoryRevisionJournal,
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.CategoryRevisionJournal>();
+			services.AddScoped<
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.CategoryAdminService>();
+			services.AddScoped<
 				PaladinHubV2.Server.Domain.Services.GameDataAdmin.IDisciplineAdminQueryService,
 				PaladinHubV2.Server.Domain.Services.GameDataAdmin.DisciplineAdminQueryService>();
 			services.AddScoped<
