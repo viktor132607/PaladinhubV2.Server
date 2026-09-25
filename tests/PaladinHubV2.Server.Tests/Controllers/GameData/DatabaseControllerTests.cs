@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using PaladinHub.Areas.Admin.ViewModels;
 using PaladinHubV2.Server.API.Controllers.GameData;
 using PaladinHubV2.Server.Data;
+using PaladinHubV2.Server.Domain.Services.GameDataAdmin;
 using PaladinHubV2.Server.Tests.Support;
 
 namespace PaladinHubV2.Server.Tests.Controllers.GameData;
@@ -13,7 +14,7 @@ public sealed class DatabaseControllerTests
     public async Task Index_Items_NormalizesEntityBlankSearchAndPaging()
     {
         using AppDbContext db = CreateContext();
-        var controller = new DatabaseController(db);
+        var controller = new DatabaseController(new DatabaseBrowserService(db));
 
         IActionResult result = await controller.Index(
             entity: " items ",
@@ -37,7 +38,7 @@ public sealed class DatabaseControllerTests
     public async Task Index_UnknownEntity_DefaultsToSpells()
     {
         using AppDbContext db = CreateContext();
-        var controller = new DatabaseController(db);
+        var controller = new DatabaseController(new DatabaseBrowserService(db));
 
         IActionResult result = await controller.Index(
             entity: "unknown",
@@ -56,7 +57,7 @@ public sealed class DatabaseControllerTests
     public async Task Index_MissingCategory_ReturnsBadRequestContract()
     {
         using AppDbContext db = CreateContext();
-        var controller = new DatabaseController(db);
+        var controller = new DatabaseController(new DatabaseBrowserService(db));
 
         IActionResult result = await controller.Index(
             categoryId: 999,
@@ -70,7 +71,7 @@ public sealed class DatabaseControllerTests
     public async Task Index_MissingDiscipline_ReturnsBadRequestContract()
     {
         using AppDbContext db = CreateContext();
-        var controller = new DatabaseController(db);
+        var controller = new DatabaseController(new DatabaseBrowserService(db));
 
         IActionResult result = await controller.Index(
             disciplineId: 999,
