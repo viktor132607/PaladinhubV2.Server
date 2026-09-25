@@ -6,6 +6,7 @@ using PaladinHubV2.Server.Common.Models.GameData;
 using PaladinHubV2.Server.Data;
 using PaladinHubV2.Server.Data.Entities;
 using PaladinHubV2.Server.Domain.Services.GameData;
+using PaladinHubV2.Server.Domain.Services.GameDataAdmin;
 using PaladinHubV2.Server.Tests.Support;
 
 namespace PaladinHubV2.Server.Tests.Controllers.GameData;
@@ -279,7 +280,10 @@ public sealed class PatchesControllerTests
 
     private static PatchesController CreateController(AppDbContext db, string actor = "actor-1")
     {
-        var controller = new PatchesController(db, new GameDataAssignmentService(db));
+        var controller = new PatchesController(
+            new PatchAdminService(
+                db,
+                new GameDataAssignmentService(db)));
         ControllerTestSupport.Attach(controller, ControllerTestSupport.CreateHttpContext(actor));
         return controller;
     }
