@@ -9,7 +9,6 @@ public sealed class CheckoutOrderTransactionService :
     ICheckoutOrderTransactionService
 {
     private const string WalletOrderRegion = "EU";
-
     private readonly AppDbContext _db;
 
     public CheckoutOrderTransactionService(
@@ -39,8 +38,7 @@ public sealed class CheckoutOrderTransactionService :
         CancellationToken cancellationToken)
     {
         if (state.Total <= 0m ||
-            string.IsNullOrWhiteSpace(
-                state.OrderId))
+            string.IsNullOrWhiteSpace(state.OrderId))
         {
             return;
         }
