@@ -270,7 +270,10 @@ public sealed class CategoriesControllerTests
 
     private static CategoriesController CreateController(AppDbContext db, string actor = "actor-1")
     {
-        var controller = new CategoriesController(db, new GameDataAssignmentService(db));
+        var controller = new CategoriesController(
+            new PaladinHubV2.Server.Domain.Services.GameDataAdmin.CategoryAdminService(
+                db,
+                new GameDataAssignmentService(db)));
         ControllerTestSupport.Attach(controller, ControllerTestSupport.CreateHttpContext(actor));
         return controller;
     }
