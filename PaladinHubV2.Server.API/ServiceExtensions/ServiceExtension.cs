@@ -349,6 +349,31 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 			services.AddScoped<
 				PaladinHubV2.Server.Domain.Services.GameDataAdmin.CategoryAdminService>();
 			services.AddScoped<
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.IRarityAdminQueryService,
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.RarityAdminQueryService>();
+			services.AddScoped<
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.IRarityAdminValidator,
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.RarityAdminValidator>();
+			services.AddScoped<
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.IRarityUsageGuard,
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.RarityUsageGuard>();
+			services.AddScoped<
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.IRarityRevisionJournal,
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.RarityRevisionJournal>();
+			services.AddScoped<
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.IRarityQualitySynchronizer,
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.RarityQualitySynchronizer>();
+			services.AddScoped<
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.RarityAdminService>(provider =>
+					new PaladinHubV2.Server.Domain.Services.GameDataAdmin.RarityAdminService(
+						provider.GetRequiredService<PaladinHubV2.Server.Data.AppDbContext>(),
+						provider.GetRequiredService<PaladinHubV2.Server.Domain.Services.GameData.GameDataAssignmentService>(),
+						provider.GetRequiredService<PaladinHubV2.Server.Domain.Services.GameDataAdmin.IRarityAdminQueryService>(),
+						provider.GetRequiredService<PaladinHubV2.Server.Domain.Services.GameDataAdmin.IRarityAdminValidator>(),
+						provider.GetRequiredService<PaladinHubV2.Server.Domain.Services.GameDataAdmin.IRarityUsageGuard>(),
+						provider.GetRequiredService<PaladinHubV2.Server.Domain.Services.GameDataAdmin.IRarityRevisionJournal>(),
+						provider.GetRequiredService<PaladinHubV2.Server.Domain.Services.GameDataAdmin.IRarityQualitySynchronizer>()));
+			services.AddScoped<
 				PaladinHubV2.Server.Domain.Services.GameDataAdmin.IDisciplineAdminQueryService,
 				PaladinHubV2.Server.Domain.Services.GameDataAdmin.DisciplineAdminQueryService>();
 			services.AddScoped<

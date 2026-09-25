@@ -117,6 +117,16 @@
     <Include>[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.PageBuilder.PageManagementService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.PageBuilder.PageManagementQueryService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.PageBuilder.PageManagementRequestPolicy,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.PageBuilder.PageManagementMutationService</Include>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(RarityAdminRefactorCoverage)' == 'true'">
+    <CollectCoverage>true</CollectCoverage>
+    <CoverletOutputFormat>json</CoverletOutputFormat>
+    <CoverletOutput>$(MSBuildProjectDirectory)/coverage/rarity-admin-refactor.json</CoverletOutput>
+    <Threshold>100</Threshold>
+    <ThresholdType>line</ThresholdType>
+    <ThresholdStat>total</ThresholdStat>
+    <Include>[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.RarityAdminService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.RarityAdminQueryService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.RarityAdminValidator,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.RarityUsageGuard,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.RarityRevisionJournal,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.RarityQualitySynchronizer</Include>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="coverlet.msbuild">
