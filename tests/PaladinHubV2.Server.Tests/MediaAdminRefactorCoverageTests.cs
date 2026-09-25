@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Moq;
 using PaladinHubV2.Server.Common.Models.GameData;
 using PaladinHubV2.Server.Data;
@@ -975,6 +976,9 @@ public sealed class MediaAdminRefactorCoverageTests
                 .UseInMemoryDatabase(
                     "media-refactor-" +
                     Guid.NewGuid().ToString("N"))
+                .ConfigureWarnings(warnings =>
+                    warnings.Ignore(
+                        InMemoryEventId.TransactionIgnoredWarning))
                 .Options;
 
         return new AppDbContext(options);
