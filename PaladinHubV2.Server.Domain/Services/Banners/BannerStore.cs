@@ -1,71 +1,86 @@
-using System.Data;
-using System.Text.Json;
-using Microsoft.EntityFrameworkCore;
-using Npgsql;
-using NpgsqlTypes;
 using PaladinHubV2.Server.Data;
+
 namespace PaladinHubV2.Server.Domain.Services.Banners;
 
-public sealed record BannerRequest(string InternalName,string Title,string Text,string? ImageUrl,string? AltText,string? ButtonText,string? ButtonUrl,string Kind,string Position,IReadOnlyList<string>? Pages,DateTimeOffset? StartAtUtc,DateTimeOffset? EndAtUtc,int SortOrder,bool IsDismissible,bool IsActive,int Version);
-public sealed record BannerActionRequest(int Version,string Action,Guid? RevisionId);
-public sealed record BannerDto(Guid Id,string InternalName,string Title,string Text,string? ImageUrl,string AltText,string? ButtonText,string? ButtonUrl,string Kind,string Position,IReadOnlyList<string> Pages,DateTimeOffset? StartAtUtc,DateTimeOffset? EndAtUtc,int SortOrder,bool IsDismissible,bool IsActive,bool IsArchived,bool IsDeleted,int Version,DateTimeOffset CreatedAtUtc,DateTimeOffset UpdatedAtUtc);
-public sealed record BannerRevisionDto(Guid Id,Guid BannerId,int Version,string Action,string Actor,DateTimeOffset CreatedAtUtc,BannerDto Snapshot);
-
-public sealed record BannerStoreResult(int Status,string Code,string Message,BannerDto? Banner=null);
 public static class BannerStore
 {
-    public static string NormalizePath(string? path){var v=string.IsNullOrWhiteSpace(path)?"/":path.Trim();if(!v.StartsWith('/'))v="/"+v;if(v.Length>1)v=v.TrimEnd('/');return v;}
-    private static bool PublicPath(string p)=>p.Length<=2048&&p.StartsWith('/')&&!p.StartsWith("//")&&!p.Contains('\\')&&!p.Any(char.IsControl);
-    public static string? Validate(BannerRequest r,bool creating)
-    {
-        if(string.IsNullOrWhiteSpace(r.InternalName)||r.InternalName.Trim().Length>100)return "Internal name is required and limited to 100 characters.";
-        if(string.IsNullOrWhiteSpace(r.Title)||r.Title.Trim().Length>200)return "Title is required and limited to 200 characters.";
-        if(string.IsNullOrWhiteSpace(r.Text)||r.Text.Length>10000)return "Text is required and limited to 10000 characters.";
-        if((r.AltText?.Length??0)>300||(r.ButtonText?.Length??0)>120||(r.ImageUrl?.Length??0)>2048||(r.ButtonUrl?.Length??0)>2048)return "One or more values exceed their maximum length.";
-        if(!new[]{"information","success","warning"}.Contains(r.Kind?.Trim().ToLowerInvariant()))return "Kind must be information, success or warning.";
-        if(!new[]{"above-navbar","below-navbar","above-content"}.Contains(r.Position?.Trim().ToLowerInvariant()))return "Position is invalid.";
-        if(r.StartAtUtc.HasValue&&r.EndAtUtc.HasValue&&r.EndAtUtc.Value.ToUniversalTime()<r.StartAtUtc.Value.ToUniversalTime())return "End date cannot be before start date.";
-        if(string.IsNullOrWhiteSpace(r.ButtonUrl)!=string.IsNullOrWhiteSpace(r.ButtonText))return "Button text and URL must be provided together.";
-        if(!string.IsNullOrWhiteSpace(r.ButtonUrl)&&!SafeUrl(r.ButtonUrl))return "Button URL must be an internal path or an HTTP/HTTPS URL.";
-        if(!string.IsNullOrWhiteSpace(r.ImageUrl)&&!SafeUrl(r.ImageUrl))return "Image URL must be an internal path or an HTTP/HTTPS URL.";
-        if(r.Pages is{Count:>200})return "A banner can target at most 200 pages.";
-        if(r.Pages is not null&&r.Pages.Any(p=>string.IsNullOrWhiteSpace(p)||(!PublicPath(p.Trim())||p.Contains('?')||p.Contains('#')||System.Text.RegularExpressions.Regex.IsMatch(p,"^/(admin|api|account|checkout|cart|login|register)(/|$)",System.Text.RegularExpressions.RegexOptions.IgnoreCase))))return "Page scopes must be public paths beginning with a single slash.";
-        if(!creating&&r.Version<1)return "Version is required.";return null;
-    }
-    private static bool SafeUrl(string value){if(value.Any(char.IsControl)||value.Contains('\\'))return false;value=value.Trim();if(PublicPath(value))return true;if(!Uri.TryCreate(value,UriKind.Absolute,out var uri))return false;return uri.Scheme is "http" or "https";}
-    public static async Task<List<BannerDto>> ReadAllAsync(AppDbContext db,CancellationToken ct){var c=await ConnectionAsync(db,ct);await using var cmd=new NpgsqlCommand("SELECT * FROM \"SiteBanners\" ORDER BY \"Position\",\"SortOrder\",\"InternalName\"",c);await using var reader=await cmd.ExecuteReaderAsync(ct);var list=new List<BannerDto>();while(await reader.ReadAsync(ct))list.Add(Read(reader));return list;}
-    public static async Task<BannerStoreResult> CreateAsync(AppDbContext db,BannerRequest r,string actor,CancellationToken ct)
-    {
-        var now=DateTimeOffset.UtcNow;var x=new BannerDto(Guid.NewGuid(),r.InternalName.Trim(),r.Title.Trim(),r.Text.Trim(),Null(r.ImageUrl),r.AltText?.Trim()??"",Null(r.ButtonText),Null(r.ButtonUrl),r.Kind.Trim().ToLowerInvariant(),r.Position.Trim().ToLowerInvariant(),NormalizePages(r.Pages),r.StartAtUtc?.ToUniversalTime(),r.EndAtUtc?.ToUniversalTime(),r.SortOrder,r.IsDismissible,r.IsActive,false,false,1,now,now);var c=await ConnectionAsync(db,ct);await using var tx=await c.BeginTransactionAsync(ct);
-        try{var mediaError=await LockAndValidateMediaAsync(c,tx,x,null,ct);if(mediaError is not null)return mediaError;await InsertAsync(c,tx,x,ct);await RevisionAsync(c,tx,x,"created",actor,ct);await tx.CommitAsync(ct);return new(200,"ok","",x);}catch(PostgresException ex)when(ex.SqlState==PostgresErrorCodes.UniqueViolation){await tx.RollbackAsync(ct);return new(409,"banner.duplicate","A banner with that internal name already exists.");}
-    }
-    public static async Task<BannerStoreResult> UpdateAsync(AppDbContext db,Guid id,BannerRequest r,string actor,CancellationToken ct){var current=await FindAsync(db,id,ct);if(current is null||current.IsDeleted)return new(404,"banner.notFound","Banner not found.");if(current.IsArchived)return new(409,"banner.archived","Unarchive before editing.");if(current.Version!=r.Version)return new(409,"banner.stale","The banner was changed by another user. Reload before saving.");var next=current with{InternalName=r.InternalName.Trim(),Title=r.Title.Trim(),Text=r.Text.Trim(),ImageUrl=Null(r.ImageUrl),AltText=r.AltText?.Trim()??"",ButtonText=Null(r.ButtonText),ButtonUrl=Null(r.ButtonUrl),Kind=r.Kind.Trim().ToLowerInvariant(),Position=r.Position.Trim().ToLowerInvariant(),Pages=NormalizePages(r.Pages),StartAtUtc=r.StartAtUtc?.ToUniversalTime(),EndAtUtc=r.EndAtUtc?.ToUniversalTime(),SortOrder=r.SortOrder,IsDismissible=r.IsDismissible,IsActive=r.IsActive,Version=current.Version+1,UpdatedAtUtc=DateTimeOffset.UtcNow};return await ReplaceAsync(db,current,next,"updated",actor,ct);}
-    public static async Task<BannerStoreResult> ChangeAsync(AppDbContext db,Guid id,BannerActionRequest r,string actor,CancellationToken ct)
-    {
-        var current=await FindAsync(db,id,ct);if(current is null)return new(404,"banner.notFound","Banner not found.");if(current.Version!=r.Version)return new(409,"banner.stale","The banner was changed by another user. Reload before continuing.");var action=(r.Action??"").Trim().ToLowerInvariant();if(current.IsDeleted&&action!="restore")return new(409,"banner.deleted","Restore a revision before deletion first.");BannerDto next;
-        switch(action){case"archive":next=current with{IsArchived=true,Version=current.Version+1,UpdatedAtUtc=DateTimeOffset.UtcNow};break;case"unarchive":next=current with{IsArchived=false,IsDeleted=false,Version=current.Version+1,UpdatedAtUtc=DateTimeOffset.UtcNow};break;case"delete":next=current with{IsDeleted=true,IsActive=false,Version=current.Version+1,UpdatedAtUtc=DateTimeOffset.UtcNow};break;case"restore":if(r.RevisionId is null)return new(400,"banner.revisionRequired","Revision is required.");var snapshot=await RevisionSnapshotAsync(db,id,r.RevisionId.Value,ct);if(snapshot is null)return new(404,"banner.revisionNotFound","Revision not found.");if(snapshot.IsDeleted)return new(400,"banner.deletedRevision","Select a revision before deletion.");var invalid=Validate(ToRequest(snapshot,current.Version),false);if(invalid is not null)return new(400,"banner.restoreInvalid",invalid);next=snapshot with{Version=current.Version+1,IsDeleted=false,UpdatedAtUtc=DateTimeOffset.UtcNow};break;default:return new(400,"banner.actionInvalid","Unsupported banner action.");}
-        return await ReplaceAsync(db,current,next,action=="restore"?"restored":action=="delete"?"deleted":action=="archive"?"archived":"unarchived",actor,ct);
-    }
-    public static async Task<List<BannerRevisionDto>> HistoryAsync(AppDbContext db,Guid id,CancellationToken ct){var c=await ConnectionAsync(db,ct);await using var cmd=new NpgsqlCommand("SELECT \"Id\",\"BannerId\",\"Version\",\"Action\",\"Actor\",\"CreatedAtUtc\",\"Snapshot\"::text FROM \"BannerRevisions\" WHERE \"BannerId\"=@id ORDER BY \"Version\" DESC",c);cmd.Parameters.AddWithValue("id",id);await using var reader=await cmd.ExecuteReaderAsync(ct);var list=new List<BannerRevisionDto>();while(await reader.ReadAsync(ct))list.Add(new(reader.GetGuid(0),reader.GetGuid(1),reader.GetInt32(2),reader.GetString(3),reader.GetString(4),reader.GetFieldValue<DateTimeOffset>(5),JsonSerializer.Deserialize<BannerDto>(reader.GetString(6))!));return list;}
-    private static async Task<BannerStoreResult> ReplaceAsync(AppDbContext db,BannerDto current,BannerDto next,string action,string actor,CancellationToken ct){var c=await ConnectionAsync(db,ct);await using var tx=await c.BeginTransactionAsync(ct);try{var mediaError=await LockAndValidateMediaAsync(c,tx,next,current.IsDeleted?null:current.ImageUrl,ct);if(mediaError is not null)return mediaError;await using var cmd=new NpgsqlCommand("UPDATE \"SiteBanners\" SET \"InternalName\"=@name,\"Title\"=@title,\"Text\"=@text,\"ImageUrl\"=@image,\"AltText\"=@alt,\"ButtonText\"=@buttonText,\"ButtonUrl\"=@buttonUrl,\"Kind\"=@kind,\"Position\"=@position,\"PagesJson\"=CAST(@pages AS jsonb),\"StartAtUtc\"=@start,\"EndAtUtc\"=@end,\"SortOrder\"=@sort,\"IsDismissible\"=@dismiss,\"IsActive\"=@active,\"IsArchived\"=@archived,\"IsDeleted\"=@deleted,\"Version\"=@nextVersion,\"UpdatedAtUtc\"=@updated WHERE \"Id\"=@id AND \"Version\"=@version",c,tx);Bind(cmd,next);cmd.Parameters.AddWithValue("id",current.Id);cmd.Parameters.AddWithValue("version",current.Version);if(await cmd.ExecuteNonQueryAsync(ct)==0){await tx.RollbackAsync(ct);return new(409,"banner.stale","The banner was changed by another user. Reload before continuing.");}await RevisionAsync(c,tx,next,action,actor,ct);await tx.CommitAsync(ct);return new(200,"ok","",next);}catch(PostgresException ex)when(ex.SqlState==PostgresErrorCodes.UniqueViolation){await tx.RollbackAsync(ct);return new(409,"banner.duplicate","A banner with that internal name already exists.");}}
-    public static bool IsVisible(BannerDto x,string path,DateTimeOffset now) => !x.IsDeleted&&!x.IsArchived&&x.IsActive&&(x.Pages.Count==0||x.Pages.Any(p=>string.Equals(NormalizePath(p),NormalizePath(path),StringComparison.OrdinalIgnoreCase)))&&(x.StartAtUtc is null||x.StartAtUtc<=now)&&(x.EndAtUtc is null||x.EndAtUtc>now);
-    private static async Task<BannerStoreResult?> LockAndValidateMediaAsync(NpgsqlConnection connection,NpgsqlTransaction tx,BannerDto next,string? previous,CancellationToken ct)
-    {
-        await using var mutex=new NpgsqlCommand("SELECT pg_advisory_xact_lock(8820411)",connection,tx);await mutex.ExecuteNonQueryAsync(ct);
-        if(next.IsDeleted||next.ImageUrl==previous||string.IsNullOrWhiteSpace(next.ImageUrl))return null;
-        var match=System.Text.RegularExpressions.Regex.Match(next.ImageUrl,@"/(?:spell-icons|icons)/([0-9a-fA-F-]{36})(?:$|[/?#])");
-        if(!match.Success||!Guid.TryParse(match.Groups[1].Value,out var id))return null;
-        await using var media=new NpgsqlCommand("SELECT COUNT(*) FROM \"SpellIcons\" WHERE \"Id\"=@id AND NOT \"IsDeleted\" AND NOT \"IsArchived\"",connection,tx);media.Parameters.AddWithValue("id",id);
-        return Convert.ToInt32(await media.ExecuteScalarAsync(ct))>0?null:new(409,"banner.mediaUnavailable","Choose an active image from the media library.");
-    }
-    private static async Task InsertAsync(NpgsqlConnection c,NpgsqlTransaction tx,BannerDto x,CancellationToken ct){await using var cmd=new NpgsqlCommand("INSERT INTO \"SiteBanners\"(\"Id\",\"InternalName\",\"Title\",\"Text\",\"ImageUrl\",\"AltText\",\"ButtonText\",\"ButtonUrl\",\"Kind\",\"Position\",\"PagesJson\",\"StartAtUtc\",\"EndAtUtc\",\"SortOrder\",\"IsDismissible\",\"IsActive\",\"IsArchived\",\"IsDeleted\",\"Version\",\"CreatedAtUtc\",\"UpdatedAtUtc\") VALUES(@id,@name,@title,@text,@image,@alt,@buttonText,@buttonUrl,@kind,@position,CAST(@pages AS jsonb),@start,@end,@sort,@dismiss,@active,@archived,@deleted,@nextVersion,@created,@updated)",c,tx);Bind(cmd,x);cmd.Parameters.AddWithValue("id",x.Id);cmd.Parameters.AddWithValue("created",x.CreatedAtUtc);await cmd.ExecuteNonQueryAsync(ct);}
-    private static void Bind(NpgsqlCommand cmd,BannerDto x){cmd.Parameters.AddWithValue("name",x.InternalName);cmd.Parameters.AddWithValue("title",x.Title);cmd.Parameters.AddWithValue("text",x.Text);cmd.Parameters.Add(new NpgsqlParameter("image",NpgsqlDbType.Varchar){Value=(object?)x.ImageUrl??DBNull.Value});cmd.Parameters.AddWithValue("alt",x.AltText);cmd.Parameters.Add(new NpgsqlParameter("buttonText",NpgsqlDbType.Varchar){Value=(object?)x.ButtonText??DBNull.Value});cmd.Parameters.Add(new NpgsqlParameter("buttonUrl",NpgsqlDbType.Varchar){Value=(object?)x.ButtonUrl??DBNull.Value});cmd.Parameters.AddWithValue("kind",x.Kind);cmd.Parameters.AddWithValue("position",x.Position);cmd.Parameters.AddWithValue("pages",JsonSerializer.Serialize(x.Pages));cmd.Parameters.Add(new NpgsqlParameter("start",NpgsqlDbType.TimestampTz){Value=(object?)x.StartAtUtc??DBNull.Value});cmd.Parameters.Add(new NpgsqlParameter("end",NpgsqlDbType.TimestampTz){Value=(object?)x.EndAtUtc??DBNull.Value});cmd.Parameters.AddWithValue("sort",x.SortOrder);cmd.Parameters.AddWithValue("dismiss",x.IsDismissible);cmd.Parameters.AddWithValue("active",x.IsActive);cmd.Parameters.AddWithValue("archived",x.IsArchived);cmd.Parameters.AddWithValue("deleted",x.IsDeleted);cmd.Parameters.AddWithValue("nextVersion",x.Version);cmd.Parameters.AddWithValue("updated",x.UpdatedAtUtc);}
-    private static async Task RevisionAsync(NpgsqlConnection c,NpgsqlTransaction tx,BannerDto x,string action,string actor,CancellationToken ct){await using var cmd=new NpgsqlCommand("INSERT INTO \"BannerRevisions\"(\"Id\",\"BannerId\",\"Version\",\"Action\",\"Actor\",\"CreatedAtUtc\",\"Snapshot\") VALUES(@id,@banner,@version,@action,@actor,@created,CAST(@snapshot AS jsonb))",c,tx);cmd.Parameters.AddWithValue("id",Guid.NewGuid());cmd.Parameters.AddWithValue("banner",x.Id);cmd.Parameters.AddWithValue("version",x.Version);cmd.Parameters.AddWithValue("action",action);cmd.Parameters.AddWithValue("actor",actor);cmd.Parameters.AddWithValue("created",DateTimeOffset.UtcNow);cmd.Parameters.AddWithValue("snapshot",JsonSerializer.Serialize(x));await cmd.ExecuteNonQueryAsync(ct);}
-    private static async Task<BannerDto?> RevisionSnapshotAsync(AppDbContext db,Guid banner,Guid id,CancellationToken ct){var c=await ConnectionAsync(db,ct);await using var cmd=new NpgsqlCommand("SELECT \"Snapshot\"::text FROM \"BannerRevisions\" WHERE \"BannerId\"=@banner AND \"Id\"=@id",c);cmd.Parameters.AddWithValue("banner",banner);cmd.Parameters.AddWithValue("id",id);var v=await cmd.ExecuteScalarAsync(ct) as string;return v is null?null:JsonSerializer.Deserialize<BannerDto>(v);}
-    private static async Task<BannerDto?> FindAsync(AppDbContext db,Guid id,CancellationToken ct){var c=await ConnectionAsync(db,ct);await using var cmd=new NpgsqlCommand("SELECT * FROM \"SiteBanners\" WHERE \"Id\"=@id",c);cmd.Parameters.AddWithValue("id",id);await using var reader=await cmd.ExecuteReaderAsync(ct);return await reader.ReadAsync(ct)?Read(reader):null;}
-    private static BannerDto Read(NpgsqlDataReader r){DateTimeOffset? Time(string n)=>r.IsDBNull(r.GetOrdinal(n))?null:r.GetFieldValue<DateTimeOffset>(r.GetOrdinal(n));string? Text(string n)=>r.IsDBNull(r.GetOrdinal(n))?null:r.GetString(r.GetOrdinal(n));var pages=JsonSerializer.Deserialize<List<string>>(r.GetString(r.GetOrdinal("PagesJson")))??[];return new(r.GetGuid(r.GetOrdinal("Id")),r.GetString(r.GetOrdinal("InternalName")),r.GetString(r.GetOrdinal("Title")),r.GetString(r.GetOrdinal("Text")),Text("ImageUrl"),r.GetString(r.GetOrdinal("AltText")),Text("ButtonText"),Text("ButtonUrl"),r.GetString(r.GetOrdinal("Kind")),r.GetString(r.GetOrdinal("Position")),pages,Time("StartAtUtc"),Time("EndAtUtc"),r.GetInt32(r.GetOrdinal("SortOrder")),r.GetBoolean(r.GetOrdinal("IsDismissible")),r.GetBoolean(r.GetOrdinal("IsActive")),r.GetBoolean(r.GetOrdinal("IsArchived")),r.GetBoolean(r.GetOrdinal("IsDeleted")),r.GetInt32(r.GetOrdinal("Version")),r.GetFieldValue<DateTimeOffset>(r.GetOrdinal("CreatedAtUtc")),r.GetFieldValue<DateTimeOffset>(r.GetOrdinal("UpdatedAtUtc")));}
-    private static async Task<NpgsqlConnection> ConnectionAsync(AppDbContext db,CancellationToken ct){var c=(NpgsqlConnection)db.Database.GetDbConnection();if(c.State!=ConnectionState.Open)await c.OpenAsync(ct);return c;}
-    private static IReadOnlyList<string> NormalizePages(IReadOnlyList<string>? p)=>p?.Where(x=>!string.IsNullOrWhiteSpace(x)).Select(x=>NormalizePath(x)).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x=>x).ToArray()??[];
-    private static string? Null(string? v)=>string.IsNullOrWhiteSpace(v)?null:v.Trim();
-    private static BannerRequest ToRequest(BannerDto x,int version)=>new(x.InternalName,x.Title,x.Text,x.ImageUrl,x.AltText,x.ButtonText,x.ButtonUrl,x.Kind,x.Position,x.Pages,x.StartAtUtc,x.EndAtUtc,x.SortOrder,x.IsDismissible,x.IsActive,version);
+    private static readonly BannerRules Rules =
+        new();
+
+    public static string NormalizePath(
+        string? path) =>
+        Rules.NormalizePath(path);
+
+    public static string? Validate(
+        BannerRequest request,
+        bool creating) =>
+        Rules.Validate(
+            request,
+            creating);
+
+    public static bool IsVisible(
+        BannerDto banner,
+        string path,
+        DateTimeOffset now) =>
+        Rules.IsVisible(
+            banner,
+            path,
+            now);
+
+    public static Task<List<BannerDto>> ReadAllAsync(
+        AppDbContext db,
+        CancellationToken cancellationToken) =>
+        new PostgresBannerRepository(db)
+            .ReadAllAsync(
+                cancellationToken);
+
+    public static Task<List<BannerRevisionDto>> HistoryAsync(
+        AppDbContext db,
+        Guid id,
+        CancellationToken cancellationToken) =>
+        new PostgresBannerRepository(db)
+            .HistoryAsync(
+                id,
+                cancellationToken);
+
+    public static Task<BannerStoreResult> CreateAsync(
+        AppDbContext db,
+        BannerRequest request,
+        string actor,
+        CancellationToken cancellationToken) =>
+        CreateService(db).CreateAsync(
+            request,
+            actor,
+            cancellationToken);
+
+    public static Task<BannerStoreResult> UpdateAsync(
+        AppDbContext db,
+        Guid id,
+        BannerRequest request,
+        string actor,
+        CancellationToken cancellationToken) =>
+        CreateService(db).UpdateAsync(
+            id,
+            request,
+            actor,
+            cancellationToken);
+
+    public static Task<BannerStoreResult> ChangeAsync(
+        AppDbContext db,
+        Guid id,
+        BannerActionRequest request,
+        string actor,
+        CancellationToken cancellationToken) =>
+        CreateService(db).ChangeAsync(
+            id,
+            request,
+            actor,
+            cancellationToken);
+
+    private static BannerStoreService CreateService(
+        AppDbContext db) =>
+        new(
+            new PostgresBannerRepository(db),
+            Rules,
+            TimeProvider.System);
 }
