@@ -83,7 +83,8 @@ public sealed class BannersController(
     }
 
     private string Actor() =>
-        User.Identity?.Name ?? "admin";
+        HttpContext?.User?.Identity?.Name ??
+        "admin";
 
     private IActionResult Result(
         BannerStoreResult result,
