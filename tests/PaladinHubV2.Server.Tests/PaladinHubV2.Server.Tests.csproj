@@ -127,6 +127,16 @@
     <Include>[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.RarityAdminService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.RarityAdminQueryService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.RarityAdminValidator,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.RarityUsageGuard,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.RarityRevisionJournal,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.RarityQualitySynchronizer</Include>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(MediaAdminRefactorCoverage)' == 'true'">
+    <CollectCoverage>true</CollectCoverage>
+    <CoverletOutputFormat>json</CoverletOutputFormat>
+    <CoverletOutput>$(MSBuildProjectDirectory)/coverage/media-admin-refactor.json</CoverletOutput>
+    <Threshold>100</Threshold>
+    <ThresholdType>line</ThresholdType>
+    <ThresholdStat>total</ThresholdStat>
+    <Include>[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.MediaAdminService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.MediaAdminQueryService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.MediaAdminValidator,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.MediaUsageCounter,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.GameDataAdmin.MediaRevisionJournal</Include>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="coverlet.msbuild">
