@@ -19,7 +19,7 @@ public sealed class TagAdminQueryService :
     public Task<List<TagListItem>> ListAsync(
         CancellationToken cancellationToken)
     {
-        return _db.GameTages
+        return _db.GameTags
             .AsNoTracking()
             .OrderBy(item => item.SortOrder)
             .ThenBy(item => item.Name)
