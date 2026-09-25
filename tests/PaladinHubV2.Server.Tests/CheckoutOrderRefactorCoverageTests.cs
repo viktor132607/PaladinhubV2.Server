@@ -401,6 +401,47 @@ public sealed class CheckoutOrderRefactorCoverageTests
     }
 
     [Fact]
+    public async Task TransactionStoreIgnoresMissingOrderId()
+    {
+        await using AppDbContext db =
+            CreateDb();
+
+        var store =
+            new CheckoutTransactionStore(db);
+
+        await store.LogPurchaseAsync(
+            new User { Id = "user" },
+            new CheckoutState
+            {
+                Total = 10m,
+                OrderId = " ",
+                PaymentMethod =
+                    PaymentMethod.CashOnDelivery
+            },
+            TransactionStatus.Pending,
+            Ct);
+
+        Assert.Empty(db.Transactions);
+    }
+
+    [Fact]
+    public void CompatibilityConstructorRemainsAvailable()
+    {
+        using AppDbContext db =
+            CreateDb();
+
+        var service =
+            new CheckoutOrderService(
+                Mock.Of<ICartSessionService>(),
+                Mock.Of<IProductService>(),
+                Mock.Of<IWalletService>(),
+                db,
+                Mock.Of<IEuroUsdRateProvider>());
+
+        Assert.NotNull(service);
+    }
+
+    [Fact]
     public async Task FacadeDelegatesReadOperations()
     {
         var snapshots =
