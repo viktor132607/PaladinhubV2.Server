@@ -194,7 +194,7 @@
     <Threshold>100</Threshold>
     <ThresholdType>line</ThresholdType>
     <ThresholdStat>total</ThresholdStat>
-    <Include>[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Checkout.CheckoutOrderService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Checkout.CheckoutCartSnapshotProvider,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Checkout.CheckoutWalletReviewService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Checkout.CheckoutTransactionStore</Include>
+    <Include>[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Checkout.CheckoutOrderService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Checkout.CheckoutCartCoordinator,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Checkout.CheckoutOrderMoneyPolicy,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Checkout.CheckoutOrderTransactionService,[PaladinHubV2.Server.Domain]PaladinHubV2.Server.Domain.Services.Checkout.CheckoutWalletPaymentService</Include>
   </PropertyGroup>
 
   <ItemGroup>
