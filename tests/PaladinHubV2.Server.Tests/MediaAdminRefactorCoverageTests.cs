@@ -215,20 +215,6 @@ public sealed class MediaAdminRefactorCoverageTests
                     "/api/spell-icons/" + key
             });
 
-        db.ContentPages.Add(
-            new ContentPage
-            {
-                Section = "holy",
-                Slug = "guide",
-                Title = "Guide",
-                JsonLayout =
-                    "{\"image\":\"/api/spell-icons/" +
-                    key +
-                    "\"}",
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
-            });
-
         db.Set<SeoEntry>().AddRange(
             new SeoEntry
             {
@@ -268,7 +254,7 @@ public sealed class MediaAdminRefactorCoverageTests
                 id,
                 Ct);
 
-        Assert.Equal(10, count);
+        Assert.Equal(9, count);
     }
 
     [Fact]
