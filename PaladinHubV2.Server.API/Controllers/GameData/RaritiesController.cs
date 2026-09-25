@@ -2,8 +2,6 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PaladinHubV2.Server.Common.Models.GameData;
-using PaladinHubV2.Server.Data;
-using PaladinHubV2.Server.Domain.Services.GameData;
 using PaladinHubV2.Server.Domain.Services.GameDataAdmin;
 
 namespace PaladinHubV2.Server.API.Controllers.GameData;
@@ -14,10 +12,9 @@ public sealed class RaritiesController : ControllerBase
 	private readonly RarityAdminService _rarities;
 
 	public RaritiesController(
-		AppDbContext db,
-		GameDataAssignmentService assignments)
+		RarityAdminService rarities)
 	{
-		_rarities = new RarityAdminService(db, assignments);
+		_rarities = rarities;
 	}
 
 	[HttpGet]
