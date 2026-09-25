@@ -32,7 +32,7 @@ public sealed class TagAdminValidator :
                 .ToLowerInvariant();
 
         bool exists =
-            await _db.GameTages.AnyAsync(
+            await _db.GameTags.AnyAsync(
                 item =>
                     item.Id != id &&
                     !item.IsDeleted &&
