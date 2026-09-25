@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using PaladinHubV2.Server.Common.Models.GameData;
 using PaladinHubV2.Server.Data;
@@ -7,362 +6,312 @@ using PaladinHubV2.Server.Domain.Services.GameData;
 
 namespace PaladinHubV2.Server.Domain.Services.GameDataAdmin;
 
-public enum CategoryAdminError
-{
-	None,
-	NotFound,
-	Stale,
-	Validation,
-	InUse,
-	RevisionNotFound,
-	DeletedRevision
-}
-
-public sealed record CategoryAdminResult(
-	CategoryAdminError Error,
-	Category? Category = null,
-	string? Message = null);
-
 public sealed class CategoryAdminService
 {
-	private readonly AppDbContext _db;
-	private readonly GameDataAssignmentService _assignments;
+    private readonly AppDbContext _db;
+    private readonly GameDataAssignmentService _assignments;
+    private readonly ICategoryAdminQueryService _queries;
+    private readonly ICategoryAdminValidator _validator;
+    private readonly ICategoryUsageGuard _usage;
+    private readonly ICategoryRevisionJournal _journal;
 
-	public CategoryAdminService(
-		AppDbContext db,
-		GameDataAssignmentService assignments)
-	{
-		_db = db;
-		_assignments = assignments;
-	}
+    public CategoryAdminService(
+        AppDbContext db,
+        GameDataAssignmentService assignments)
+        : this(
+            db,
+            assignments,
+            new CategoryAdminQueryService(db),
+            new CategoryAdminValidator(db),
+            new CategoryUsageGuard(db),
+            new CategoryRevisionJournal(db))
+    {
+    }
 
-	public Task<List<CategoryListItem>> ListAsync(
-		CancellationToken cancellationToken)
-	{
-		return _db.Categories
-			.AsNoTracking()
-			.OrderBy(item => item.SortOrder)
-			.ThenBy(item => item.Name)
-			.Select(item => new CategoryListItem(
-				item.Id,
-				item.Name,
-				item.Description,
-				item.ParentId,
-				item.SortOrder,
-				item.IsArchived,
-				item.IsDeleted,
-				item.Version,
-				_db.Spells.Count(spell => spell.CategoryId == item.Id) +
-				_db.Items.Count(product => product.CategoryId == item.Id),
-				_db.Categories.Count(child =>
-					child.ParentId == item.Id && !child.IsDeleted)))
-			.ToListAsync(cancellationToken);
-	}
+    public CategoryAdminService(
+        AppDbContext db,
+        GameDataAssignmentService assignments,
+        ICategoryAdminQueryService queries,
+        ICategoryAdminValidator validator,
+        ICategoryUsageGuard usage,
+        ICategoryRevisionJournal journal)
+    {
+        _db = db;
+        _assignments = assignments;
+        _queries = queries;
+        _validator = validator;
+        _usage = usage;
+        _journal = journal;
+    }
 
-	public Task<List<CategoryRevision>> HistoryAsync(
-		int id,
-		CancellationToken cancellationToken)
-	{
-		return _db.CategoryRevisions
-			.AsNoTracking()
-			.Where(revision => revision.CategoryId == id)
-			.OrderByDescending(revision => revision.Version)
-			.ToListAsync(cancellationToken);
-	}
+    public Task<List<CategoryListItem>> ListAsync(
+        CancellationToken cancellationToken) =>
+        _queries.ListAsync(cancellationToken);
 
-	public async Task<CategoryAdminResult> CreateAsync(
-		CategoryRequest request,
-		string actor,
-		CancellationToken cancellationToken)
-	{
-		await using var transaction =
-			await _assignments.BeginAsync(cancellationToken);
+    public Task<List<CategoryRevision>> HistoryAsync(
+        int id,
+        CancellationToken cancellationToken) =>
+        _queries.HistoryAsync(id, cancellationToken);
 
-		var category = new Category();
-		string? error = await ValidateAsync(
-			category.Id,
-			request,
-			cancellationToken);
+    public async Task<CategoryAdminResult> CreateAsync(
+        CategoryRequest request,
+        string actor,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction =
+            await _assignments.BeginAsync(cancellationToken);
 
-		if (error != null)
-		{
-			return new CategoryAdminResult(
-				CategoryAdminError.Validation,
-				Message: error);
-		}
+        var category = new Category();
 
-		Apply(category, request);
-		_db.Categories.Add(category);
-		await _db.SaveChangesAsync(cancellationToken);
-		Record(category, "created", actor);
-		await _db.SaveChangesAsync(cancellationToken);
-		await transaction.CommitAsync(cancellationToken);
+        string? error = await _validator.ValidateAsync(
+            category.Id,
+            request,
+            cancellationToken);
 
-		return new CategoryAdminResult(
-			CategoryAdminError.None,
-			category);
-	}
+        if (error is not null)
+        {
+            return Validation(error);
+        }
 
-	public async Task<CategoryAdminResult> UpdateAsync(
-		int id,
-		CategoryRequest request,
-		string actor,
-		CancellationToken cancellationToken)
-	{
-		await using var transaction =
-			await _assignments.BeginAsync(cancellationToken);
+        Apply(category, request);
 
-		Category? category = await _db.Categories.SingleOrDefaultAsync(
-			item => item.Id == id && !item.IsDeleted,
-			cancellationToken);
+        _db.Categories.Add(category);
+        await _db.SaveChangesAsync(cancellationToken);
 
-		if (category == null)
-		{
-			return new CategoryAdminResult(CategoryAdminError.NotFound);
-		}
+        _journal.Record(category, "created", actor);
+        await _db.SaveChangesAsync(cancellationToken);
 
-		if (request.Version != category.Version)
-		{
-			return new CategoryAdminResult(CategoryAdminError.Stale);
-		}
+        await transaction.CommitAsync(cancellationToken);
 
-		string? error = await ValidateAsync(
-			id,
-			request,
-			cancellationToken);
+        return Success(category);
+    }
 
-		if (error != null)
-		{
-			return new CategoryAdminResult(
-				CategoryAdminError.Validation,
-				Message: error);
-		}
+    public async Task<CategoryAdminResult> UpdateAsync(
+        int id,
+        CategoryRequest request,
+        string actor,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction =
+            await _assignments.BeginAsync(cancellationToken);
 
-		string action = category.IsArchived == request.IsArchived
-			? "updated"
-			: request.IsArchived ? "archived" : "unarchived";
+        Category? category =
+            await _db.Categories.SingleOrDefaultAsync(
+                item =>
+                    item.Id == id &&
+                    !item.IsDeleted,
+                cancellationToken);
 
-		Apply(category, request);
-		category.Version++;
-		Record(category, action, actor);
-		await _db.SaveChangesAsync(cancellationToken);
-		await transaction.CommitAsync(cancellationToken);
+        if (category is null)
+        {
+            return Error(CategoryAdminError.NotFound);
+        }
 
-		return new CategoryAdminResult(
-			CategoryAdminError.None,
-			category);
-	}
+        if (request.Version != category.Version)
+        {
+            return Error(CategoryAdminError.Stale);
+        }
 
-	public async Task<CategoryAdminResult> DeleteAsync(
-		int id,
-		int version,
-		string actor,
-		CancellationToken cancellationToken)
-	{
-		await using var transaction =
-			await _assignments.BeginAsync(cancellationToken);
+        string? error = await _validator.ValidateAsync(
+            id,
+            request,
+            cancellationToken);
 
-		Category? category = await _db.Categories.SingleOrDefaultAsync(
-			item => item.Id == id && !item.IsDeleted,
-			cancellationToken);
+        if (error is not null)
+        {
+            return Validation(error);
+        }
 
-		if (category == null)
-		{
-			return new CategoryAdminResult(CategoryAdminError.NotFound);
-		}
+        string action = ResolveUpdateAction(
+            category.IsArchived,
+            request.IsArchived);
 
-		if (version != category.Version)
-		{
-			return new CategoryAdminResult(CategoryAdminError.Stale);
-		}
+        Apply(category, request);
+        category.Version++;
 
-		bool inUse =
-			await _db.Categories.AnyAsync(
-				item => item.ParentId == id && !item.IsDeleted,
-				cancellationToken) ||
-			await _db.Spells.AnyAsync(
-				spell => spell.CategoryId == id,
-				cancellationToken) ||
-			await _db.Items.AnyAsync(
-				item => item.CategoryId == id,
-				cancellationToken);
+        _journal.Record(category, action, actor);
 
-		if (inUse)
-		{
-			return new CategoryAdminResult(
-				CategoryAdminError.InUse,
-				Message:
-					"Move the subcategories and assigned records before deleting this category, or archive it.");
-		}
+        await _db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
 
-		category.IsDeleted = true;
-		category.Version++;
-		Record(category, "deleted", actor);
-		await _db.SaveChangesAsync(cancellationToken);
-		await transaction.CommitAsync(cancellationToken);
+        return Success(category);
+    }
 
-		return new CategoryAdminResult(CategoryAdminError.None);
-	}
+    public async Task<CategoryAdminResult> DeleteAsync(
+        int id,
+        int version,
+        string actor,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction =
+            await _assignments.BeginAsync(cancellationToken);
 
-	public async Task<CategoryAdminResult> RestoreAsync(
-		int id,
-		RevisionRestoreRequest request,
-		string actor,
-		CancellationToken cancellationToken)
-	{
-		await using var transaction =
-			await _assignments.BeginAsync(cancellationToken);
+        Category? category =
+            await _db.Categories.SingleOrDefaultAsync(
+                item =>
+                    item.Id == id &&
+                    !item.IsDeleted,
+                cancellationToken);
 
-		Category? category = await _db.Categories.SingleOrDefaultAsync(
-			item => item.Id == id,
-			cancellationToken);
+        if (category is null)
+        {
+            return Error(CategoryAdminError.NotFound);
+        }
 
-		if (category == null)
-		{
-			return new CategoryAdminResult(CategoryAdminError.NotFound);
-		}
+        if (version != category.Version)
+        {
+            return Error(CategoryAdminError.Stale);
+        }
 
-		if (request.Version != category.Version)
-		{
-			return new CategoryAdminResult(CategoryAdminError.Stale);
-		}
+        if (await _usage.IsInUseAsync(
+                id,
+                cancellationToken))
+        {
+            return new CategoryAdminResult(
+                CategoryAdminError.InUse,
+                Message:
+                    "Move the subcategories and assigned records before deleting this category, or archive it.");
+        }
 
-		CategoryRevision? revision = await _db.CategoryRevisions
-			.SingleOrDefaultAsync(
-				item =>
-					item.Id == request.RevisionId &&
-					item.CategoryId == id,
-				cancellationToken);
+        category.IsDeleted = true;
+        category.Version++;
 
-		if (revision == null)
-		{
-			return new CategoryAdminResult(
-				CategoryAdminError.RevisionNotFound);
-		}
+        _journal.Record(category, "deleted", actor);
 
-		Category snapshot =
-			JsonSerializer.Deserialize<Category>(revision.Snapshot)!;
+        await _db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
 
-		if (snapshot.IsDeleted)
-		{
-			return new CategoryAdminResult(
-				CategoryAdminError.DeletedRevision,
-				Message: "Select a revision before deletion.");
-		}
+        return Error(CategoryAdminError.None);
+    }
 
-		var restored = new CategoryRequest(
-			snapshot.Name,
-			snapshot.Description,
-			snapshot.ParentId,
-			snapshot.SortOrder,
-			snapshot.IsArchived,
-			category.Version);
+    public async Task<CategoryAdminResult> RestoreAsync(
+        int id,
+        RevisionRestoreRequest request,
+        string actor,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction =
+            await _assignments.BeginAsync(cancellationToken);
 
-		string? error = await ValidateAsync(
-			id,
-			restored,
-			cancellationToken);
+        Category? category =
+            await _db.Categories.SingleOrDefaultAsync(
+                item => item.Id == id,
+                cancellationToken);
 
-		if (error != null)
-		{
-			return new CategoryAdminResult(
-				CategoryAdminError.Validation,
-				Message: error);
-		}
+        if (category is null)
+        {
+            return Error(CategoryAdminError.NotFound);
+        }
 
-		Apply(category, restored);
-		category.IsDeleted = false;
-		category.Version++;
-		Record(category, "restored", actor);
-		await _db.SaveChangesAsync(cancellationToken);
-		await transaction.CommitAsync(cancellationToken);
+        if (request.Version != category.Version)
+        {
+            return Error(CategoryAdminError.Stale);
+        }
 
-		return new CategoryAdminResult(
-			CategoryAdminError.None,
-			category);
-	}
+        CategoryRevision? revision =
+            await _db.CategoryRevisions.SingleOrDefaultAsync(
+                item =>
+                    item.Id == request.RevisionId &&
+                    item.CategoryId == id,
+                cancellationToken);
 
-	private async Task<string?> ValidateAsync(
-		int id,
-		CategoryRequest request,
-		CancellationToken cancellationToken)
-	{
-		if (string.IsNullOrWhiteSpace(request.Name))
-		{
-			return "Name is required.";
-		}
+        if (revision is null)
+        {
+            return Error(
+                CategoryAdminError.RevisionNotFound);
+        }
 
-		List<Category> categories = await _db.Categories
-			.AsNoTracking()
-			.ToListAsync(cancellationToken);
+        Category snapshot =
+            _journal.ReadSnapshot(revision);
 
-		if (categories.Any(item =>
-				item.Id != id &&
-				!item.IsDeleted &&
-				item.ParentId == request.ParentId &&
-				string.Equals(
-					item.Name,
-					request.Name.Trim(),
-					StringComparison.OrdinalIgnoreCase)))
-		{
-			return "A category with this name already exists under this parent.";
-		}
+        if (snapshot.IsDeleted)
+        {
+            return new CategoryAdminResult(
+                CategoryAdminError.DeletedRevision,
+                Message:
+                    "Select a revision before deletion.");
+        }
 
-		var seen = new HashSet<int> { id };
-		int? parentId = request.ParentId;
+        CategoryRequest restored =
+            BuildRestoreRequest(
+                snapshot,
+                category.Version);
 
-		while (parentId is not null)
-		{
-			if (!seen.Add(parentId.Value))
-			{
-				return "A category cannot be placed inside itself or its descendants.";
-			}
+        string? error = await _validator.ValidateAsync(
+            id,
+            restored,
+            cancellationToken);
 
-			Category? parent = categories.Find(item =>
-				item.Id == parentId && !item.IsDeleted);
+        if (error is not null)
+        {
+            return Validation(error);
+        }
 
-			if (parent == null)
-			{
-				return "Parent category does not exist. Restore it first.";
-			}
+        Apply(category, restored);
+        category.IsDeleted = false;
+        category.Version++;
 
-			if (parent.IsArchived && !request.IsArchived)
-			{
-				return "An active category cannot have an archived parent.";
-			}
+        _journal.Record(category, "restored", actor);
 
-			parentId = parent.ParentId;
-		}
+        await _db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
 
-		if (request.IsArchived && categories.Any(item =>
-				item.ParentId == id &&
-				!item.IsDeleted &&
-				!item.IsArchived))
-		{
-			return "Archive or move the active subcategories first.";
-		}
+        return Success(category);
+    }
 
-		return null;
-	}
+    internal static string ResolveUpdateAction(
+        bool wasArchived,
+        bool isArchived)
+    {
+        if (wasArchived == isArchived)
+        {
+            return "updated";
+        }
 
-	private static void Apply(Category category, CategoryRequest request)
-	{
-		category.Name = request.Name.Trim();
-		category.Description = request.Description?.Trim() ?? string.Empty;
-		category.ParentId = request.ParentId;
-		category.SortOrder = request.SortOrder;
-		category.IsArchived = request.IsArchived;
-	}
+        return isArchived
+            ? "archived"
+            : "unarchived";
+    }
 
-	private void Record(Category category, string action, string actor)
-	{
-		_db.CategoryRevisions.Add(new CategoryRevision
-		{
-			CategoryId = category.Id,
-			Version = category.Version,
-			Action = action,
-			Actor = actor,
-			Snapshot = JsonSerializer.Serialize(category)
-		});
-	}
+    internal static CategoryRequest BuildRestoreRequest(
+        Category snapshot,
+        int currentVersion)
+    {
+        return new CategoryRequest(
+            snapshot.Name,
+            snapshot.Description,
+            snapshot.ParentId,
+            snapshot.SortOrder,
+            snapshot.IsArchived,
+            currentVersion);
+    }
+
+    internal static void Apply(
+        Category category,
+        CategoryRequest request)
+    {
+        category.Name = request.Name.Trim();
+        category.Description =
+            request.Description?.Trim() ??
+            string.Empty;
+        category.ParentId = request.ParentId;
+        category.SortOrder = request.SortOrder;
+        category.IsArchived = request.IsArchived;
+    }
+
+    private static CategoryAdminResult Success(
+        Category category) =>
+        new(
+            CategoryAdminError.None,
+            category);
+
+    private static CategoryAdminResult Validation(
+        string message) =>
+        new(
+            CategoryAdminError.Validation,
+            Message: message);
+
+    private static CategoryAdminResult Error(
+        CategoryAdminError error) =>
+        new(error);
 }
