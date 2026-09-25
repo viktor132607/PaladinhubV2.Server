@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using PaladinHubV2.Server.Data;
 using PaladinHubV2.Server.Domain.Services.GameDataAdmin;
 
 namespace PaladinHubV2.Server.API.Controllers.GameData
@@ -12,9 +11,10 @@ namespace PaladinHubV2.Server.API.Controllers.GameData
 	{
 		private readonly DatabaseBrowserService _browser;
 
-		public DatabaseController(AppDbContext db)
+		public DatabaseController(
+			DatabaseBrowserService browser)
 		{
-			_browser = new DatabaseBrowserService(db);
+			_browser = browser;
 		}
 
 		[HttpGet]
