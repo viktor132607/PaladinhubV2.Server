@@ -351,7 +351,11 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 				PaladinHubV2.Server.Domain.Services.GameDataAdmin.IDatabaseItemBrowseQuery,
 				PaladinHubV2.Server.Domain.Services.GameDataAdmin.DatabaseItemBrowseQuery>();
 			services.AddScoped<
-				PaladinHubV2.Server.Domain.Services.GameDataAdmin.DatabaseBrowserService>();
+				PaladinHubV2.Server.Domain.Services.GameDataAdmin.DatabaseBrowserService>(provider =>
+					new PaladinHubV2.Server.Domain.Services.GameDataAdmin.DatabaseBrowserService(
+						provider.GetRequiredService<PaladinHubV2.Server.Domain.Services.GameDataAdmin.IDatabaseBrowseScopeResolver>(),
+						provider.GetRequiredService<PaladinHubV2.Server.Domain.Services.GameDataAdmin.IDatabaseSpellBrowseQuery>(),
+						provider.GetRequiredService<PaladinHubV2.Server.Domain.Services.GameDataAdmin.IDatabaseItemBrowseQuery>()));
 
 			services.AddScoped<
 				PaladinHubV2.Server.Domain.Services.GameData.GameDataAssignmentService>();
