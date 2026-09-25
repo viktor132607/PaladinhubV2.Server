@@ -1,5 +1,6 @@
 using System.Data;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using NpgsqlTypes;
 using PaladinHubV2.Server.Data;
