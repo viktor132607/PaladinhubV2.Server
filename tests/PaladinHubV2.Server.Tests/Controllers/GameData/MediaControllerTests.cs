@@ -162,7 +162,10 @@ public sealed class MediaControllerTests
 
     private static MediaController CreateController(AppDbContext db, string actor = "user-1")
     {
-        var controller = new MediaController(db, new GameDataAssignmentService(db));
+        var controller = new MediaController(
+            new PaladinHubV2.Server.Domain.Services.GameDataAdmin.MediaAdminService(
+                db,
+                new GameDataAssignmentService(db)));
         ControllerTestSupport.Attach(controller, ControllerTestSupport.CreateHttpContext(actor));
         return controller;
     }
