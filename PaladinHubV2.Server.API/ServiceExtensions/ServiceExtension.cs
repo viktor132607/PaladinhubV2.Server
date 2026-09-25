@@ -331,7 +331,13 @@ namespace PaladinHubV2.Server.API.ServiceExtensions
 			services.AddScoped<ICheckoutCartSnapshotProvider, CheckoutCartSnapshotProvider>();
 			services.AddScoped<ICheckoutWalletReviewService, CheckoutWalletReviewService>();
 			services.AddScoped<ICheckoutTransactionStore, CheckoutTransactionStore>();
-			services.AddScoped<ICheckoutOrderService, CheckoutOrderService>();
+			services.AddScoped<ICheckoutOrderService>(provider =>
+				new CheckoutOrderService(
+					provider.GetRequiredService<ICheckoutCartSnapshotProvider>(),
+					provider.GetRequiredService<ICheckoutWalletReviewService>(),
+					provider.GetRequiredService<ICheckoutTransactionStore>(),
+					provider.GetRequiredService<IWalletService>(),
+					provider.GetRequiredService<ICartSessionService>()));
 			services.AddScoped<ICheckoutCardPaymentService, CheckoutCardPaymentService>();
 			services.AddScoped<CheckoutCardFlowService>();
 
