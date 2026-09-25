@@ -15,6 +15,11 @@ public sealed record CheckoutOrderPlacementResult(
     bool Success,
     string? ErrorMessage = null);
 
+public readonly record struct CheckoutPurchaseMoney(
+    decimal Amount,
+    string Currency,
+    string Region);
+
 public interface ICheckoutOrderService
 {
     Task<CheckoutCartSnapshot> GetCartSnapshotAsync(
@@ -53,27 +58,32 @@ public interface ICheckoutOrderService
         CancellationToken cancellationToken);
 }
 
-public interface ICheckoutCartSnapshotProvider
+public interface ICheckoutCartCoordinator
 {
-    Task<CheckoutCartSnapshot> GetAsync(
+    Task<CheckoutCartSnapshot> GetSnapshotAsync(
+        User user,
+        CancellationToken cancellationToken);
+
+    Task ArchiveAsync(
         User user,
         CancellationToken cancellationToken);
 }
 
-public interface ICheckoutWalletReviewService
+public interface ICheckoutWalletPaymentService
 {
-    bool RequiresVerifiedRate { get; }
-
     Task<CheckoutPaymentReview> ReviewAsync(
         User user,
         CheckoutState state,
         decimal total);
 
-    decimal GetChargeAmount(
-        CheckoutState state);
+    Task<CheckoutOrderPlacementResult> ChargeAsync(
+        User user,
+        CheckoutState state,
+        string orderId,
+        CancellationToken cancellationToken);
 }
 
-public interface ICheckoutTransactionStore
+public interface ICheckoutOrderTransactionService
 {
     Task<bool> ExistsAsync(
         string userId,
